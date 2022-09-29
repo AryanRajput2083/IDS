@@ -1,9 +1,19 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:inway/authentication.dart';
 import 'package:intl/intl.dart';
 import 'helper_registration.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  await FirebaseAppCheck.instance.activate(
+    webRecaptchaSiteKey: 'recaptcha-v3-site-key',  // If you're building a web app.
+  );
   runApp(const MyApp());
 }
 
@@ -134,7 +144,7 @@ class RegistrationPage extends StatefulWidget{
   @override
   State<RegistrationPage> createState()=> _RegistrationState();
 }
-class _RegistrationState extends State<RegistrationPage>{
+class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObserver{
 
   TextEditingController dateInput = TextEditingController();
   TextEditingController phoneInput = TextEditingController();
@@ -142,6 +152,8 @@ class _RegistrationState extends State<RegistrationPage>{
   TextEditingController nameInput = TextEditingController();
 
   int index = 1;
+
+  // normal functions
   void ssd(String ss){
     showDialog(
       context: context,
@@ -159,21 +171,12 @@ class _RegistrationState extends State<RegistrationPage>{
       ));
     }
     else{
-      if(sendVerificationCode(phoneInput.text)){
-        setState(() {
-          index=2;
-        });
-      }
+      sendVerificationCode("+91"+phoneInput.text);
     }
   }
   void page2f(){
-    if(verifyCode(codeInput.text)) {
-      setState(() {
-        index=3;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text("verified"),
-        ));
-      });
+    if(codeInput.text.isNotEmpty) {
+      verifyCode(codeInput.text);
     }
   }
   void page3f(){
@@ -188,6 +191,61 @@ class _RegistrationState extends State<RegistrationPage>{
   String courseValue = "";
   void saveDetails(){
 
+  }
+
+
+  // firebase functions
+  String verificationID = "";
+  sendVerificationCode(String num) async {
+    await FirebaseAuth.instance.verifyPhoneNumber(
+      phoneNumber: num,
+      verificationCompleted: (PhoneAuthCredential credential) {
+        signInwithCredent(credential);
+      },
+      verificationFailed: (FirebaseAuthException e) {},
+      codeSent: (String verificationId, int? resendToken) {
+        setState(() {
+          verificationID = verificationId;
+          index = 2;
+        });
+      },
+      codeAutoRetrievalTimeout: (String verificationId) {},
+    );
+  }
+  CheckisLoggedin(){
+    FirebaseAuth.instance
+        .authStateChanges()
+        .listen((User? user) {
+      if (user != null) {
+        setState(() {
+          index = 3;
+        });
+      }
+      else{
+        setState(() {
+          index = 1;
+        });
+      }
+    });
+  }
+  verifyCode(String code) async {
+    PhoneAuthCredential credential = PhoneAuthProvider.credential(verificationId: verificationID, smsCode: code);
+    signInwithCredent(credential);
+  }
+  signInwithCredent(PhoneAuthCredential cred) async {
+    FirebaseAuth auth = FirebaseAuth.instance;
+    try {
+      await auth.signInWithCredential(cred);
+      setState(() {
+        index = 3;
+      });
+    }
+    on FirebaseAuthException catch(e){
+      ssd(e.message.toString());
+      setState(() {
+        index = 1;
+      });
+    }
   }
 
   // send verification code page
@@ -464,8 +522,13 @@ class _RegistrationState extends State<RegistrationPage>{
   }
 
   @override
-  Widget build(BuildContext context) {
+  void initState() {
+    CheckisLoggedin();
+    super.initState();
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),

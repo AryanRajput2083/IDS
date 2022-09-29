@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "442344968402",
+    "project_id": "inway212",
+    "storage_bucket": "inway212.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:442344968402:android:90d0be6a69581b1f139d0b",
+        "android_client_info": {
+          "package_name": "com.project.inway.inway"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "442344968402-2jgfc78dclji973bpokgqspmabo2nurq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.project.inway.inway",
+            "certificate_hash": "0233751ae727fd293a18a34aa54c7a1aeec6aa2f"
+          }
+        },
+        {
+          "client_id": "442344968402-ddmtrs5srd0uch09de0ff8sb3stj0kf5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDNvPcUVdNMPKYqZ6fEi0ffAJO_ioy2gM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "442344968402-ddmtrs5srd0uch09de0ff8sb3stj0kf5.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "442344968402-v7rg27f4ujn93fiojp1807u7termka9l.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.project.inway.inway"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
