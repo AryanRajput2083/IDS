@@ -1,10 +1,13 @@
+import 'dart:core';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'helper_registration.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -152,6 +155,8 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
   TextEditingController nameInput = TextEditingController();
 
   int index = 1;
+  String phoneNumber = "";
+  bool isLoading = false;
 
   // normal functions
   void ssd(String ss){
@@ -171,31 +176,112 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
       ));
     }
     else{
-      sendVerificationCode("+91"+phoneInput.text);
+      setState(() {
+        isLoading = true;
+        phoneNumber = "+91${phoneInput.text}";
+        sendVerificationCode(phoneNumber);
+      });
     }
   }
   void page2f(){
     if(codeInput.text.isNotEmpty) {
-      verifyCode(codeInput.text);
+      setState(() {
+        isLoading = true;
+        verifyCode(codeInput.text);
+      });
     }
   }
   void page3f(){
-    setState(() {
-      index=4;
-    });
+    if(nameInput.text.isNotEmpty&&dateInput.text.isNotEmpty){
+      setState(() {
+        isLoading = true;
+        saveBasicDetails(nameInput.text,dateInput.text,phoneNumber);
+      });
+    }
+    else{
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text("Please fill all the fields"),
+      ));
+    }
+  }
+  void page4f(){
+    if(courseValue!="SELECT"){
+      user[heading] = courseValue;
+      if(mp[courseValue].toString()==""){
+        setState(() {
+          isLoading = true;
+          saveEducationalDetails();
+        });
+      }
+      else{
+        docref = docref.collection(heading).doc(courseValue);
+        showListItems(mp[courseValue]);
+      }
+    }
+    else{
+      showListItems(heading);
+    }
   }
   void nextPage(){
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>HomePage(title: "Welcome")));
   }
-  List<String> coursesItems = ["a","b",""];
-  String courseValue = "";
-  void saveDetails(){
+  List<String> coursesItems = ["SELECT"];
+  String courseValue = "SELECT";
+  Map<String,dynamic> mp = new Map();
 
-  }
 
 
   // firebase functions
   String verificationID = "";
+  String heading = "College";
+  var edb = FirebaseFirestore.instance;
+  var user = <String, dynamic>{};
+  DocumentReference docref = FirebaseFirestore.instance.collection("Manual").doc("Manual");
+  saveBasicDetails(String name,String dob,String num){
+    var db = FirebaseFirestore.instance;
+    user["Name"] = name;
+    user["DOB"] = dob;
+    user["Phone"] = num;
+    db.collection("Users").doc(num).set(user)
+        .then((value) async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('datasaved', true);
+          setState(() {
+            isLoading = false;
+            index = 4;
+            showListItems(heading);
+          });
+        },
+        onError: (e){
+          setState(() {
+            isLoading = false;
+          });
+          ssd(e.toString());
+        }
+      );
+  }
+  saveEducationalDetails(){
+    var db  = FirebaseFirestore.instance;
+    try{
+      db.collection("Users").doc(phoneNumber).set(user)
+          .then((value){
+            setState(() {
+              isLoading = false;
+              nextPage();
+            });
+          },
+          onError: (e){
+            setState(() {
+              isLoading = false;
+            });
+            ssd(e.toString());
+          }
+      );
+    }
+    on FirebaseException catch(e){
+      ssd(e.toString());
+    }
+  }
   sendVerificationCode(String num) async {
     await FirebaseAuth.instance.verifyPhoneNumber(
       phoneNumber: num,
@@ -205,6 +291,7 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
       verificationFailed: (FirebaseAuthException e) {},
       codeSent: (String verificationId, int? resendToken) {
         setState(() {
+          isLoading = false;
           verificationID = verificationId;
           index = 2;
         });
@@ -215,37 +302,78 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
   CheckisLoggedin(){
     FirebaseAuth.instance
         .authStateChanges()
-        .listen((User? user) {
+        .listen((User? user) async {
       if (user != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('loggedin', true);
         setState(() {
+          isLoading = false;
           index = 3;
         });
       }
       else{
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('loggedin', false);
         setState(() {
+          isLoading = false;
           index = 1;
         });
       }
     });
   }
   verifyCode(String code) async {
-    PhoneAuthCredential credential = PhoneAuthProvider.credential(verificationId: verificationID, smsCode: code);
-    signInwithCredent(credential);
+    setState(() {
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(verificationId: verificationID, smsCode: code);
+      isLoading = true;
+      signInwithCredent(credential);
+    });
   }
   signInwithCredent(PhoneAuthCredential cred) async {
     FirebaseAuth auth = FirebaseAuth.instance;
     try {
-      await auth.signInWithCredential(cred);
-      setState(() {
-        index = 3;
-      });
+      await auth.signInWithCredential(cred).then(
+        (value) {
+          setState(() {
+            isLoading = false;
+            index = 3;
+          });
+        },
+        onError: (e){
+          ssd(e.toString());
+          setState(() {
+            isLoading = false;
+            index = 1;
+          });
+        }
+      );
     }
     on FirebaseAuthException catch(e){
       ssd(e.message.toString());
       setState(() {
+        isLoading = false;
         index = 1;
       });
     }
+  }
+  showListItems(String s) async {
+    setState(() {
+      mp.clear();
+      coursesItems.clear();
+      coursesItems.add("SELECT");
+      courseValue = "SELECT";
+      isLoading = true;
+      heading = s;
+    });
+    await docref.collection(s).get().then((event) {
+      for (DocumentSnapshot doc in event.docs) {
+        final d = doc.data() as Map<String,dynamic>;
+        coursesItems.add(doc.id);
+        mp[doc.id] = d["Next"];
+      }
+      setState((){
+        isLoading = false;
+      });
+    });
   }
 
   // send verification code page
@@ -453,20 +581,21 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
 
           // course selection
           Container(
-            margin: EdgeInsets.only(top: 10),
+            margin: EdgeInsets.only(top: 10,left: 6),
             alignment: Alignment.topLeft,
             child: Text(
-              "Select your course",
+              heading,
             ),
           ),
           Container(
             alignment: Alignment.topLeft,
-            padding:  EdgeInsets.all(6),
+            padding:  EdgeInsets.all(3),
+            margin: EdgeInsets.all(6),
             child: DropdownButton<String>(
               icon: Icon(Icons.arrow_drop_down),
               iconSize: 24,
               elevation: 16,
-              value: coursesItems[0],
+              value: courseValue,
               items: coursesItems.map<DropdownMenuItem<String>>((String value) {
                 return DropdownMenuItem<String>(
                   value: value,
@@ -500,9 +629,9 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
                   margin:  EdgeInsets.all(6),
                   alignment: Alignment.bottomRight,
                   child: ElevatedButton(
-                    child: Text("Save"),
+                    child: Text("Next"),
                     onPressed: (){
-                      saveDetails();
+                      page4f();
                     },
                   ),
                 )
@@ -515,6 +644,20 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
   }
 
   Widget pages(){
+    return Container(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          Visibility(
+            visible: isLoading,
+            child: LinearProgressIndicator(),
+          ),
+          selectPage()
+        ],
+      ),
+    );
+  }
+  Widget selectPage(){
     if(index==1) return page1();
     if(index==2) return page2();
     if(index==3) return page3();
@@ -522,7 +665,18 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
   }
 
   @override
-  void initState() {
+  Future<void> initState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool? isDataSaved = prefs.getBool('datasaved');
+    final bool?     islogged = prefs.getBool('loggedin');
+    if(isDataSaved!=null&&isDataSaved){
+      nextPage();
+    }
+    else if(islogged!=null&&islogged){
+      setState(() {
+        index = 3;
+      });
+    }
     CheckisLoggedin();
     super.initState();
   }
