@@ -109,7 +109,7 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
   void nextPage(){
     try {
       Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (context) => HomePage(title: "Welcome")));
+          MaterialPageRoute(builder: (context) => HomePage(title: "Welcome",number: phoneNumber,)));
     }
     on Exception catch(e){
       ssd(e.toString());
@@ -136,6 +136,7 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
         .then((value) async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('datasaved', true);
+      await prefs.setString("number", phoneNumber);
       setState(() {
         isLoading = false;
         index = 4;
@@ -574,7 +575,6 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
 }
 
 
-
 class Account extends StatefulWidget{
   const Account({super.key, required this.title});
 
@@ -700,19 +700,22 @@ class _SearchState extends State<Search>{
 }
 
 
+
 class HomePage extends StatefulWidget{
-  const HomePage({super.key, required this.title});
+  const HomePage({super.key, required this.title,required this.number});
   final String title;
+  final String number;
   @override
   State<HomePage> createState() => _HomePageState();
 }
-class _HomePageState extends State<HomePage>{
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
 
   int _currentIndex = 0;
+  String _number = "";
 
   Widget homPage(){
     if(_currentIndex==0){
-      return const Chats(title: "Messages",);
+      return Chats(title: "Messages",number: _number,);
     }else if(_currentIndex==1){
       return const Feeds(title: "Feeds");
     }else if(_currentIndex==2){
@@ -723,32 +726,43 @@ class _HomePageState extends State<HomePage>{
       return const Account(title: "My Account",);
     }
   }
-  Widget icon(){
-    if(_currentIndex==0){
-      return Icon(Icons.add);
-    }else if(_currentIndex==1){
-      return Icon(Icons.add);
-    }else if(_currentIndex==2){
-      return Icon(Icons.add);
-    }else if(_currentIndex==3){
-      return Icon(Icons.search);
-    }else{
-      return Icon(Icons.edit);
-    }
+  // Widget icon(){
+  //   if(_currentIndex==0){
+  //     return Icon(Icons.add);
+  //   }else if(_currentIndex==1){
+  //     return Icon(Icons.add);
+  //   }else if(_currentIndex==2){
+  //     return Icon(Icons.add);
+  //   }else if(_currentIndex==3){
+  //     return Icon(Icons.search);
+  //   }else{
+  //     return Icon(Icons.edit);
+  //   }
+  // }
+
+  // floatingaction(){
+  //   if(_currentIndex==0){
+  //     Navigator.push(context, MaterialPageRoute(builder: (context) => NChats(title: "New Chat",number: _number,)));
+  //   }else if(_currentIndex==1){
+  //
+  //   }else if(_currentIndex==2){
+  //
+  //   }else if(_currentIndex==3){
+  //
+  //   }else{
+  //
+  //   }
+  // }
+  @override
+  void initState() {
+    _number = widget.number;
+    WidgetsBinding.instance.addObserver(this);
+    super.initState();
   }
-
-  floatingaction(){
-    if(_currentIndex==0){
-      Navigator.push(context, MaterialPageRoute(builder: (context) => NChats(title: "New Chat")));
-    }else if(_currentIndex==1){
-
-    }else if(_currentIndex==2){
-
-    }else if(_currentIndex==3){
-
-    }else{
-
-    }
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
   @override
   Widget build(BuildContext context) {
@@ -756,12 +770,12 @@ class _HomePageState extends State<HomePage>{
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       body: homPage(),
-      floatingActionButton: FloatingActionButton(
-        child: icon(),
-        onPressed: (){
-          floatingaction();
-        },
-      ),
+      // floatingActionButton: FloatingActionButton(
+      //   child: icon(),
+      //   onPressed: (){
+      //     floatingaction();
+      //   },
+      // ),
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: colorScheme.surface,
         selectedItemColor: colorScheme.onSurface,
@@ -797,6 +811,11 @@ class _HomePageState extends State<HomePage>{
         ],
       ),
     );
+  }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    print(state.name+" HomeActivity");
+    super.didChangeAppLifecycleState(state);
   }
 
 }

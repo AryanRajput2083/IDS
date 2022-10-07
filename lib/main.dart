@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:sqflite/sqflite.dart';
 import 'firebase_options.dart';
 import 'authentication.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,7 +27,18 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   // This widget is the root of your application.
-
+  Widget loadingW(){
+    return Container(
+      alignment: Alignment.center,
+      child: Text(
+        "Inway",
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
   Widget w(){
     return FutureBuilder<SharedPreferences>(
         future: SharedPreferences.getInstance(),
@@ -35,25 +47,26 @@ class MyApp extends StatelessWidget {
             return firstPage(snapshot.data);
           }
           else{
-            return Container(
-              alignment: Alignment.center,
-              child: Text(
-                "Inway",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                ),
-              ),
-            );
+            return loadingW();
           }
         }
     );
   }
-  Widget firstPage(SharedPreferences? prefs) {
-    bool? isDataSaved = prefs?.getBool('datasaved');
-    bool? islogged = prefs?.getBool('loggedin')!;
+  Widget firstPage(SharedPreferences? pref) {
+    SharedPreferences prefs = pref!;
+    bool isDataSaved = false, islogged = false;
+    if(prefs.getBool('datasaved')!=null){
+      isDataSaved = prefs.getBool('datasaved')!;
+    }
+    if(prefs.getBool('loggedin')!=null){
+      islogged    = prefs.getBool('loggedin')!;
+    }
+    String num = "";
+    if(prefs.getString('number')!=null){
+      num = prefs.getString('number')!;
+    }
     if(isDataSaved!=null&&isDataSaved){
-      return const HomePage(title: "Welcome");
+      return  HomePage(title: "Welcome",number: num,);
     }
     else if(islogged!=null&&islogged){
       return const RegistrationPage(title: "Register", i: 3);
@@ -76,19 +89,134 @@ class MyApp extends StatelessWidget {
   }
 }
 
+
 class ChatPage extends StatefulWidget{
-  const ChatPage({super.key,required this.map});
+  const ChatPage({super.key,required this.map,required this.number, required this.db});
   final Map map;
+  final String number;
+  final Database db;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
 }
 class _ChatPageState extends State<ChatPage>{
 
+  List<Map> messages = [];
   TextEditingController mesBox = new TextEditingController();
+  ScrollController lstview = new ScrollController();
+  String _number = '';
+  late Database db;
+  Map<String,dynamic> mp={};
+
   Widget chats(){
     return Expanded(
-      child: Container(),
+      child: ListView.builder(
+        controller: lstview,
+          reverse: true,
+          padding: const EdgeInsets.all(1),
+          itemCount: messages.length,
+          itemBuilder: (BuildContext context, int index) {
+            return messageItem(messages[index]);
+          }
+      ),
+    );
+  }
+  Widget messageItem(Map message){
+    if(message["sender"]==_number){
+      return sentMessage(message);
+    }
+    else{
+      return recievedMessage(message);
+    }
+  }
+  Widget recievedMessage(Map mes){
+    return Container(
+      child: Row(
+        children: [
+          Flexible(
+            flex: 2,
+            child: Card(
+              color: Color.fromRGBO(10, 170, 180, 0.6),
+              child: Column(
+                children: [
+                  Container(
+                    constraints: BoxConstraints(
+                        minWidth: 0,
+                        maxWidth: double.infinity
+                    ),
+                    alignment: Alignment.topLeft,
+                    child: Text(mes["message"]),
+                  ),
+                  Container(
+                    constraints: BoxConstraints(
+                      minWidth: 0,
+                      maxWidth: double.infinity
+                    ),
+                    alignment: Alignment.bottomRight,
+                    padding: EdgeInsets.only(right: 3,bottom: 1),
+                    child: Text(
+                        mes["time"],
+                      style: TextStyle(
+                        fontSize: 10
+                      ),
+                    ),
+                  )
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Container(),
+          )
+        ],
+      ),
+    );
+  }
+  Widget sentMessage(Map mes){
+    return Container(
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(),
+          ),
+          Flexible(
+            flex: 3,
+            child: Card(
+
+              child: InkWell(
+                splashColor: Colors.green,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.only(left: 3,top: 1,right: 3),
+                      constraints: BoxConstraints(
+                          minWidth: 0,
+                          maxWidth: double.infinity
+                      ),
+                      alignment: Alignment.topLeft,
+                      child: Text(mes["message"]),
+                    ),
+                    Container(
+                      constraints: BoxConstraints(
+                          minWidth: 0,
+                          maxWidth: double.infinity
+                      ),
+                      alignment: Alignment.bottomRight,
+                      padding: EdgeInsets.only(right: 3,bottom: 1),
+                      child: Text(
+                        mes["time"],
+                        style: TextStyle(
+                            fontSize: 10
+                        ),
+                      ),
+                    )
+                  ],
+                ),
+              )
+            ),
+          ),
+        ],
+      ),
     );
   }
   Widget mainBody(){
@@ -137,9 +265,116 @@ class _ChatPageState extends State<ChatPage>{
       ],
     );
   }
+
+  void ssd(String ss){
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          content: Text(ss),
+        );
+      },
+    );
+  }
+  Future<void> refreshContacts() async {
+    mp["date"] = DateFormat("dd-MM-yyyy").format(DateTime.now());
+    mp["time"] = DateFormat("HH:mm").format(DateTime.now());
+    mp["id"]   = DateTime.now().millisecondsSinceEpoch;
+    await db.delete("contacts",where: "number = ?",whereArgs: [mp["number"].toString()]).then((value) async {
+      await db.insert("contacts", mp);
+    }).onError((error, stackTrace){
+      ssd(error.toString());
+    });
+  }
+  Future<void> getChats() async {
+    await db.query(mp["number"].toString().replaceAll("+", "_"),orderBy: "id DESC").then((value){
+      // print(value);
+      setState((){
+        messages = List.from(value);
+      });
+    }).catchError((e){
+      
+    });
+  }
+  Future<void> sendMessageSQL() async {
+    String _time = DateFormat("HH:mm").format(DateTime.now());
+    String _date = DateFormat("dd-MM-yyyy").format(DateTime.now());
+    int timestamp = DateTime.now().millisecondsSinceEpoch;
+    final Map<String,dynamic> mpp = {
+      "date": _date,
+      "time": _time,
+      "id": timestamp,
+      "message": mesBox.text,
+      "sender" : _number,
+      "status" : 0
+    };
+    mesBox.clear();
+
+    await db.insert(mp["number"].toString().replaceAll("+", "_"),mpp).then((value){
+      setState(() {
+        messages.insert(0,mpp);
+        refreshContacts();
+      });
+    }).onError((error, stackTrace) async {
+      await db.execute(
+        """
+        create table """+mp["number"].replaceAll("+", "_")+""" (
+          message TEXT,
+          sender  VARCHAR(20),
+          time    VARCHAR(10),
+          date    VARCHAR(12),
+          id      INTEGER,
+          status  INTEGER
+        );
+        """
+      ).then((value) async {
+        await db.insert(mp["number"].toString().replaceAll("+", "_"),mpp).then((value){
+          setState(() {
+            messages.insert(0,mpp);
+            refreshContacts();
+          });
+        }).onError((error, stackTrace){
+          ssd(error.toString());
+        });
+      });
+    });
+    // await db.execute("INSERT INTO "+_number.toString().replaceAll("+", "_")+"")
+  }
+
+  @override
+  void initState() {
+    _number = widget.number;
+    db = widget.db;
+    widget.map.forEach((key, value) {
+      mp[key.toString()] = value;
+    });
+    getChats();
+    super.initState();
+  }
   @override
   Widget build(BuildContext context) {
-
+    // return WillPopScope(
+    //   onWillPop: onBackPressed,
+    //   child: Scaffold(
+    //       appBar: AppBar(
+    //         title: Text(
+    //           widget.map["name"],
+    //         ),
+    //       ),
+    //       body: mainBody(),
+    //       floatingActionButton: Container(
+    //         margin: EdgeInsets.only(bottom: 40),
+    //         child: FloatingActionButton(
+    //           child: Icon(Icons.send),
+    //           onPressed: (){
+    //             if(mesBox.text.isNotEmpty){
+    //               sendMessageSQL();
+    //             }
+    //           },
+    //         ),
+    //       )
+    //   ),
+    // );
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -152,18 +387,24 @@ class _ChatPageState extends State<ChatPage>{
         child: FloatingActionButton(
           child: Icon(Icons.send),
           onPressed: (){
-
+            if(mesBox.text.isNotEmpty){
+              sendMessageSQL();
+            }
           },
         ),
       )
     );
   }
-
+  @override
+  void dispose() {
+    super.dispose();
+  }
 }
 
 class NChats extends StatefulWidget{
-  const NChats({super.key,required this.title});
+  const NChats({super.key,required this.title,required this.number});
   final String title;
+  final String number;
 
   @override
   State<NChats> createState() => _NChatState();
@@ -274,14 +515,16 @@ class _NChatState extends State<NChats>{
       return ChatList();
     }
   }
+
   int _index = 0;
   bool isLoading =true;
   List<Map<String,String>> allContact = [];
   List<Contact> allContacts = [];
+  var db;
 
   void startChat(Map mp){
     Navigator.pushReplacement(context,
-        MaterialPageRoute(builder: (context) => ChatPage(map:mp)));
+        MaterialPageRoute(builder: (context) => ChatPage(map:mp,number: widget.number,db: db,)));
   }
   void ssd(String ss){
     showDialog(
@@ -337,10 +580,33 @@ class _NChatState extends State<NChats>{
 
     });
   }
+  getDB() async {
+    await getDatabasesPath().then((value) async {
+      String Path = value.toString()+"/database.db";
+      await openDatabase(Path,version: 1,
+          onCreate: (Database db,int version) async {
+            await db.execute(
+                """ create table contacts(
+                    number VARCHAR(20),
+                    name TEXT,
+                    time INTEGER
+                  );
+            """
+            ).then((value){
+            });
+          },
+      ).then((value){
+        db = value;
+      });
+    }).catchError((e){
+      ssd(e.toString());
+    });
+  }
 
   @override
   void initState() {
     getAllinList();
+    getDB();
     super.initState();
   }
   @override
@@ -370,15 +636,17 @@ class _NChatState extends State<NChats>{
 }
 
 class Chats extends StatefulWidget{
-  const Chats({super.key, required this.title});
+  const Chats({super.key, required this.title, required this.number});
 
   final String title;
+  final String number;
   @override
   State<Chats> createState() => _ChatState();
 }
-class _ChatState extends State<Chats>{
+class _ChatState extends State<Chats> with WidgetsBindingObserver{
 
   TextEditingController searchC = new TextEditingController();
+  String _number = "";
 
   Widget navigationText(String s,int i){
     if(_index == i){
@@ -397,9 +665,38 @@ class _ChatState extends State<Chats>{
       );
     }
   }
-  Widget allContactsItem(String name, String image){
+  Widget chatContacts(){
+    if(isLoading){
+      return Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+    else{
+      return ContactList();
+    }
+  }
+  Widget ContactList(){
+    if(chatlist.isEmpty){
+      return Center(
+        child: Text("Start a new Chat"),
+      );
+    }
+    else{
+      return ListView.builder(
+          padding: const EdgeInsets.all(1),
+          itemCount: chatlist.length,
+          itemBuilder: (BuildContext context, int index) {
+            return ContactItem(chatlist[index], "image");
+          }
+      );
+    }
+  }
+  Widget ContactItem(Map mp,String image){
     return Card(
-      child: InkWell(
+        child: InkWell(
+          onTap: (){
+            startChat(mp);
+          },
           child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
@@ -408,85 +705,89 @@ class _ChatState extends State<Chats>{
                 height: 50,
                 width:  50,
               ),
-              Padding(
-                padding: EdgeInsets.only(left: 4),
-                child: Text(name),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(left: 4),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        child: Text(
+                          mp["name"],
+                          textAlign: TextAlign.left,
+                        ),
+                      ),
+                      Container(
+                        width: double.infinity,
+                        child: Text(
+                          mp["number"],
+                          textAlign: TextAlign.left,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               )
             ],
           ),
-      )
+        )
     );
-  }
-  Widget chatsL(contactList){
-    if(contactList.length>0) {
-      return ListView.builder(
-          padding: const EdgeInsets.all(1),
-          itemCount: chatContacts.length,
-          itemBuilder: (BuildContext context, int index) {
-            return allContactsItem(chatContacts[index].givenName.toString(), "image");
-          }
-      );
-    }
-    else{
-      return Container(
-        child: Text("Start a new Chat"),
-      );
-    }
-  }
-  Widget ChatList(){
-    return Container(
-        margin: EdgeInsets.all(0),
-        padding: EdgeInsets.all(4),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            Card(
-              elevation: 1,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _index = 0;
-                        });
-                      },
-                      child: navigationText("CHATS", 0)
-                  ),
-                  TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _index = 1;
-                        });
-                      },
-                      child: navigationText("GROUPS", 1)
-                  ),
-                  TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _index = 2;
-                        });
-                      },
-                      child: navigationText("NOTICES", 2)
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: chatsL(chatContacts),
-            ),
-          ],
-        ),
-      );
   }
 
   int _index = 0;
-  List<Contact> chatContacts = [];
+  bool isLoading = true;
+  List<Map> chatlist = [];
 
-  getAllChats() async {
+  String Path = "";
+  var db;
 
+
+  Future<void> getAllChats2(Database db) async {
+    await db.query("contacts",orderBy: "id DESC").then((value){
+      setState(() {
+        chatlist = value;
+        isLoading = false;
+      });
+    }).catchError((e){
+    });
   }
-
+  void getAllChats() async {
+    await getDatabasesPath().then((value) async {
+      Path = value.toString()+"/database.db";
+      await openDatabase(Path,version: 1,
+        onCreate: (Database db,int version) async {
+          await db.execute(
+              """ create table contacts(
+                    number VARCHAR(20),
+                    name TEXT,
+                    id INTEGER,
+                    time VARCHAR(10),
+                    date VARCHAR(12)
+                  );
+            """
+          ).then((value){
+            setState(() {
+              isLoading = false;
+            });
+          });
+        },
+        onOpen: (Database db) async {
+          getAllChats2(db);
+        }
+      ).then((value){
+        db = value;
+      });
+    }).catchError((e){
+      ssd(e.toString());
+    });
+  }
+  Future<void> startChat(Map mp) async {
+    await Navigator.push(context,
+        MaterialPageRoute(builder: (context) => ChatPage(map:mp,number: _number,db: db,))).then((value){
+          getAllChats2(db);
+    });
+  }
   void ssd(String ss){
     showDialog(
       context: context,
@@ -498,23 +799,43 @@ class _ChatState extends State<Chats>{
     );
   }
 
+
   @override
   initState() {
-    getAllChats();
     super.initState();
+    _number = widget.number;
+    getAllChats();
+    WidgetsBinding.instance.addObserver(this);
+  }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    getAllChats2(db);
+    super.didChangeAppLifecycleState(state);
   }
   @override
   Widget build(BuildContext context) {
+
     return Scaffold(
 
       appBar: AppBar(
         title: Text(widget.title),
       ),
 
-      body: ChatList(),
+      body: chatContacts(),
 
+      floatingActionButton: FloatingActionButton(
+        onPressed: (){
+          Navigator.push(context, MaterialPageRoute(builder: (context) => NChats(title: "New Chat",number: _number,)));
+        },
+        child: Icon(Icons.add),
+      ),
     );
   }
-
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    db.close();
+    super.dispose();
+  }
 }
 
