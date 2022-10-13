@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:sqflite/sqflite.dart';
 import 'firebase_options.dart';
 import 'authentication.dart';
@@ -134,90 +135,104 @@ class _ChatPageState extends State<ChatPage>{
       return recievedMessage(message);
     }
   }
+  Widget status(int i){
+    print(i);
+    if(i==1){
+      return Icon(
+        size: 9,
+        Icons.done_all_sharp
+      );
+    }
+    if(i==2){
+      return Icon(
+        size: 9,
+        Icons.done_all_rounded,
+        color: Colors.red,
+      );
+    }
+    return Icon(
+      size: 9,
+      Icons.done
+    );
+  }
   Widget recievedMessage(Map mes){
+
     return Container(
       child: Row(
         children: [
           Flexible(
-            flex: 2,
             child: Card(
-              color: Color.fromRGBO(10, 170, 180, 0.6),
+              color: Color.fromRGBO(10,170,180,0.3),
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Container(
                     constraints: BoxConstraints(
-                        minWidth: 0,
-                        maxWidth: double.infinity
+                      minWidth: 80,
+                      maxWidth: MediaQuery.of(context).size.width-100,
                     ),
-                    alignment: Alignment.topLeft,
+                    padding: EdgeInsets.all(4),
                     child: Text(mes["message"]),
                   ),
-                  Container(
-                    constraints: BoxConstraints(
-                      minWidth: 0,
-                      maxWidth: double.infinity
+                  // Flexible(
+                  Text(
+                    mes["time"],
+                    style: TextStyle(
+                      fontSize: 8,
                     ),
-                    alignment: Alignment.bottomRight,
-                    padding: EdgeInsets.only(right: 3,bottom: 1),
-                    child: Text(
-                        mes["time"],
-                      style: TextStyle(
-                        fontSize: 10
-                      ),
-                    ),
-                  )
+                  ),
                 ],
               ),
             ),
           ),
-          Expanded(
-            child: Container(),
-          )
         ],
       ),
     );
   }
   Widget sentMessage(Map mes){
+
     return Container(
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          Expanded(
-            child: Container(),
-          ),
           Flexible(
-            flex: 3,
             child: Card(
-
-              child: InkWell(
-                splashColor: Colors.green,
-                child: Column(
-                  children: [
-                    Container(
-                      padding: EdgeInsets.only(left: 3,top: 1,right: 3),
-                      constraints: BoxConstraints(
-                          minWidth: 0,
-                          maxWidth: double.infinity
-                      ),
-                      alignment: Alignment.topLeft,
-                      child: Text(mes["message"]),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Container(
+                    constraints: BoxConstraints(
+                      minWidth: 80,
+                      maxWidth: MediaQuery.of(context).size.width-100,
                     ),
-                    Container(
-                      constraints: BoxConstraints(
-                          minWidth: 0,
-                          maxWidth: double.infinity
-                      ),
-                      alignment: Alignment.bottomRight,
-                      padding: EdgeInsets.only(right: 3,bottom: 1),
-                      child: Text(
-                        mes["time"],
-                        style: TextStyle(
-                            fontSize: 10
+                    padding: EdgeInsets.all(4),
+                    child: Text(mes["message"]),
+                  ),
+                  Container(
+                    child: Wrap(
+                      direction: Axis.horizontal,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        Container(
+                          child: Text(
+                            mes["time"],
+                            style: TextStyle(
+                              fontSize: 10,
+                            ),
+                          ),
+                          padding: EdgeInsets.all(1),
+
                         ),
-                      ),
-                    )
-                  ],
-                ),
-              )
+                        Container(
+                          child: status(mes["status"]),
+                          padding: EdgeInsets.all(1),
+
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -232,39 +247,58 @@ class _ChatPageState extends State<ChatPage>{
         Card(
           child: Container(
             margin: EdgeInsets.all(6),
-            child: TextFormField(
-              maxLines: 7,
-              minLines: 1,
-              controller: mesBox,
-              keyboardType: TextInputType.multiline,
-              decoration: InputDecoration(
+            child: Row(
+              children: [
+                Flexible(
+                  flex: 5,
+                  child: TextFormField(
+                    maxLines: 7,
+                    minLines: 1,
+                    controller: mesBox,
+                    keyboardType: TextInputType.multiline,
+                    decoration: InputDecoration(
 
-                hintText: "Type here",
-                prefixIcon: IconButton(
-                  icon: Icon(Icons.emoji_emotions),
-                  color: Colors.black54,
-                  onPressed: (){},
-                ),
-                suffixIcon: Container(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween, // added line
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.link),
-                        onPressed: (){},
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.camera_alt),
-                        color: Colors.black54,
-                        onPressed: (){},
-                      ),
-                    ],
+                        hintText: "Type here",
+                        prefixIcon: IconButton(
+                          icon: Icon(Icons.emoji_emotions),
+                          color: Colors.black54,
+                          onPressed: (){},
+                        ),
+                        suffixIcon: Container(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween, // added line
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.link),
+                                onPressed: (){},
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.camera_alt),
+                                color: Colors.black54,
+                                onPressed: (){},
+                              ),
+                            ],
+                          ),
+                        )
+
+                    ),
                   ),
-                )
-
-              ),
-            ),
+                ),
+                Flexible(
+                  flex: 1,
+                  child: IconButton(
+                    onPressed: (){
+                      if(mesBox.text.isNotEmpty){
+                        sendMessage();
+                      }
+                    },
+                    icon: Icon(Icons.send),
+                    color: Colors.blue,
+                  ),
+                ),
+              ],
+            )
           )
         )
       ],
@@ -411,7 +445,7 @@ class _ChatPageState extends State<ChatPage>{
     FirebaseFirestore ddb = FirebaseFirestore.instance;
     final docref = ddb.collection("Messages").doc(_number);
 
-     listener = docref.collection("Inbox").orderBy("id",descending: false).snapshots().listen((event) async {
+    listener = docref.collection("Inbox").orderBy("id",descending: false).snapshots().listen((event) async {
       final batch = FirebaseFirestore.instance.batch();
       final sqlBatch = db.batch();
       String time = DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
@@ -509,17 +543,7 @@ class _ChatPageState extends State<ChatPage>{
         ),
       ),
       body: mainBody(),
-      floatingActionButton: Container(
-        margin: EdgeInsets.only(bottom: 40),
-        child: FloatingActionButton(
-          child: Icon(Icons.send),
-          onPressed: (){
-            if(mesBox.text.isNotEmpty){
-              sendMessage();
-            }
-          },
-        ),
-      )
+
     );
   }
   @override
@@ -736,9 +760,19 @@ class _NChatState extends State<NChats>{
       ssd(e.toString()+ " 00ff");
     });
   }
+  askPermissions() async {
+    if (await Permission.contacts.request().isGranted) {
+      // Either the permission was already granted before or the user just granted it.
+
+    }
+    else{
+      ssd("Permission not granted, please enable permission for contacts");
+    }
+  }
 
   @override
   void initState() {
+    askPermissions();
     getAllinList();
     getDB();
     super.initState();
