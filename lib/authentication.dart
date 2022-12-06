@@ -708,19 +708,17 @@ class HomePage extends StatefulWidget{
   @override
   State<HomePage> createState() => _HomePageState();
 }
-class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
+class _HomePageState extends State<HomePage> {
 
   int _currentIndex = 0;
   String _number = "";
 
   Widget homPage(){
-    if(_currentIndex==0){
+    if(_currentIndex==1){
       return Chats(title: "Messages",number: _number,);
-    }else if(_currentIndex==1){
-      return const Feeds(title: "Feeds");
+    }else if(_currentIndex==0){
+      return const Feeds(title: "Notices");
     }else if(_currentIndex==2){
-      return const Confessions(title: "Confessions");
-    }else if(_currentIndex==3){
       return const Search(title: "Search People");
     }else{
       return const Account(title: "My Account",);
@@ -756,12 +754,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
   @override
   void initState() {
     _number = widget.number;
-    WidgetsBinding.instance.addObserver(this);
     super.initState();
   }
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
   @override
@@ -788,34 +784,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
         },
         items: [
           BottomNavigationBarItem(
-            label: "messages",
-            icon: Icon(Icons.chat),
-          ),
-          BottomNavigationBarItem(
-            label: "posts",
+            label: "Notices",
             icon: Icon(Icons.home),
           ),
           BottomNavigationBarItem(
-            label: "confession",
-            icon: Icon(Icons.home_work),
+            label: "Messages",
+            icon: Icon(Icons.chat),
           ),
+          // BottomNavigationBarItem(
+          //   label: "confession",
+          //   icon: Icon(Icons.home_work),
+          // ),
           BottomNavigationBarItem(
-            label: "search",
+            label: "Search",
             icon: Icon(Icons.search),
           ),
           BottomNavigationBarItem(
-            label: "account",
+            label: "Account",
             icon: Icon(Icons.account_box),
           ),
 
         ],
       ),
     );
-  }
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    print(state.name+" HomeActivity");
-    super.didChangeAppLifecycleState(state);
   }
 
 }

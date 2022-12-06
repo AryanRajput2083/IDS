@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contacts_service/contacts_service.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -109,7 +110,8 @@ class _ChatPageState extends State<ChatPage>{
   ScrollController lstview = new ScrollController();
   String _number = '';
   late Database db;
-  var listener;
+  var recievedd;
+  var sentt;
 
   Map<String,dynamic> mp={};
   Map<String,String> allContacts = {};
@@ -319,6 +321,7 @@ class _ChatPageState extends State<ChatPage>{
     mp["date"] = DateFormat("dd-MM-yyyy").format(DateTime.now());
     mp["time"] = DateFormat("HH:mm").format(DateTime.now());
     mp["id"]   = DateTime.now().millisecondsSinceEpoch;
+    // mp["new"]  = 0;
     await db.delete("contacts",where: "number = ?",whereArgs: [mp["number"].toString()]).then((value) async {
       await db.insert("contacts", mp);
     }).onError((error, stackTrace){
@@ -327,7 +330,6 @@ class _ChatPageState extends State<ChatPage>{
   }
   Future<void> getChats() async {
     await db.query(mp["number"].toString().replaceAll("+", "_"),orderBy: "id DESC").then((value){
-      // print(value);
       updateStatusMessages();
       setState((){
         messages = List.from(value);
@@ -394,130 +396,119 @@ class _ChatPageState extends State<ChatPage>{
   }
 
   updateStatusMessages() async {
-    FirebaseFirestore dbb = FirebaseFirestore.instance;
-    final batch = dbb.batch();
-    final sqlBatch = db.batch();
-    await db.query(mp["number"].toString().replaceAll("+", "_"),orderBy: "id DESC",where: "status = ? ",whereArgs: [1]).then((value) async {
+
+    await db.query(mp["number"].toString().replaceAll("+", "_"),orderBy: "id DESC",where: "not status = ? AND reciever = ?",
+        whereArgs: [2, _number]).then((value) async {
       value.forEach((element) {
-        if(element["sender"]==mp["number"]) {
-          DocumentReference docref = dbb.collection("Messages").doc(
-              mp["number"].toString()).collection("Outbox").doc(
-              element["id"].toString());
-          batch.update(docref, {
-            "status": 2,
-            "read": DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now())
-          });
-        }
-        sqlBatch.update(mp["number"].toString().replaceAll("+", "_"), {"status" : 2, "read" : DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now()) });
+        DatabaseReference outbox = FirebaseDatabase.instance.ref("Messages/"+element["sender"].toString()+"/Outbox/"+element["id"].toString());
+        outbox.update({"status" : 2, "read" : DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now()) });
       });
-      batch.commit().onError((error, stackTrace){
-        // TODO error of duplicate data insertion coming here
-        // ssd(error.toString()+" update1234");
-      });
-      await sqlBatch.commit().then((value){}).onError((error, stackTrace){
+      db.update(mp["number"].toString().replaceAll("+", "_"),
+          {"status" : 2, "read" : DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now()) },
+          where: "not status = ? AND reciever = ?",whereArgs: [2, _number]).then((value){
+      }).onError((error, stackTrace){
         ssd(error.toString()+" update2");
       });
-    }).catchError((e){
-
+    }).onError((error, stackTrace) {
+      ssd(error.toString());
     });
   }
-  void sendMessageToServer(Map<String,dynamic> mpp){
-    var ll = mpp["id"];
+  Future<void> sendMessageToServer(Map<String,dynamic> mpp) async {
     mpp["time"] = DateFormat("HH:mm").format(DateTime.now());
     mpp["date"] = DateFormat("dd-MM-yyyy").format(DateTime.now());
-    mpp["id"]   = DateTime.now().millisecondsSinceEpoch;
     mpp["status"] = 0;
-    FirebaseFirestore ddb = FirebaseFirestore.instance;
-    final batch = ddb.batch();
-    DocumentReference outbox = ddb.collection("Messages").doc(_number).collection("Outbox").doc(mpp["id"].toString());
-    DocumentReference inbox = ddb.collection("Messages").doc(mp["number"].toString()).collection("Inbox").doc(mpp["id"].toString());
-    batch.set(inbox,mpp);
-    batch.set(outbox, mpp);
-    batch.commit().then((value) async {
-      await db.update(mp["number"].toString().replaceAll("+", "_"), mpp,where: "id = ?",whereArgs: [ll]).then((value){
-        getChats();
-      }).onError((error, stackTrace){
-        ssd(error.toString()+" senttt");
+
+    DatabaseReference outbox = FirebaseDatabase.instance.ref("Messages/$_number/Outbox/"+mpp["id"].toString());
+    DatabaseReference inbox  = FirebaseDatabase.instance.ref("Messages/"+mp["number"].toString()+"/Inbox/"+mpp["id"].toString());
+
+    await outbox.set(mpp).then((value) async {
+      await inbox.set(mpp).then((value) async {
+        await db.update(mp["number"].toString().replaceAll("+", "_"), mpp,where: "id = ?",whereArgs: [mpp["id"]]).then((value){
+          getChats();
+        }).onError((error, stackTrace){
+          ssd(error.toString()+" senttt");
+        });
       });
+    }).onError((error, stackTrace){
+      ssd(error.toString());
     });
+
   }
   attachFirebaseListener(){
-    FirebaseFirestore ddb = FirebaseFirestore.instance;
-    final docref = ddb.collection("Messages").doc(_number);
 
-    listener = docref.collection("Inbox").orderBy("id",descending: false).snapshots().listen((event) async {
-      final batch = FirebaseFirestore.instance.batch();
-      final sqlBatch = db.batch();
-      String time = DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
-      event.docs.forEach((element) async {
-        final mes= element.data();
-        String nm = element.get("sname").toString();
-        if(allContacts.containsKey(element.get("sender").toString())) {
-          nm = allContacts[element.get("sender").toString()]!;
-        }
-        final mp = {
-          "number" : element.get("sender").toString(),
-          "name"   : nm,
-          "time"   : element.get("time").toString(),
-          "date"   : element.get("date").toString(),
-          "id"     : element.get("id")
-        };
-        batch.delete(docref.collection("Inbox").doc(mes["id"].toString()));
-        batch.update(ddb.collection("Messages").doc(mes["sender"].toString()).collection("Outbox").doc(mes["id"].toString()), {"status":1,"recieved":time});
-        mes["recieved"] = time;
-        mes["status"]   = 1;
-        sqlBatch.execute(
-            """
-        create table IF NOT EXISTS """+element.get("sender").replaceAll("+", "_")+""" (
-          message TEXT,
-          sender  VARCHAR(20),
-          reciever VARCHAR(20),
-          time    VARCHAR(10),
-          date    VARCHAR(12),
-          id      INTEGER UNIQUE,
-          status  INTEGER,
-          recieved VARCHAR(22),
-          read     VARCHAR(22),
-          sname    VARCHAR(50)
-        );
-        """
-        );
-        sqlBatch.insert(element.get("sender").replaceAll("+", "_"), mes);
-        sqlBatch.delete("contacts",where: "number = ?",whereArgs: [mes["sender"].toString()]);
-        sqlBatch.insert("contacts", mp);
+    FirebaseDatabase fdb = FirebaseDatabase.instance;
+    final recieved = fdb.ref("Messages/$_number/Inbox");
+    final sent     = fdb.ref("Messages/$_number/Outbox");
+
+    recievedd = recieved.onChildAdded.listen((event) async {
+      Map<String, dynamic> mss = {};
+      event.snapshot.children.forEach((element) {
+        mss[element.key!] = element.value.toString();
       });
-      batch.commit().onError((error, stackTrace){
-        ssd(error.toString()+" done");
-      });
-      await sqlBatch.commit().then((value){
+      String table = mss["sender"].toString().replaceAll("+", "_")!;
+      Batch sqlBatch = db.batch();
+
+
+      String nm = mss["sname"].toString();
+      if(allContacts.containsKey(mss["sender"].toString())) {
+        nm = allContacts[mss["sender"].toString()]!;
+      }
+      final mp = {
+        "number" : mss["sender"].toString(),
+        "name"   : nm,
+        "time"   : mss["time"].toString(),
+        "date"   : mss["date"].toString(),
+        "id"     : mss["id"]
+      };
+      sqlBatch.execute(
+          """
+              create table IF NOT EXISTS """+table+""" (
+                message TEXT,
+                sender  VARCHAR(20),
+                reciever VARCHAR(20),
+                time    VARCHAR(10),
+                date    VARCHAR(12),
+                id      INTEGER UNIQUE,
+                status  INTEGER,
+                recieved VARCHAR(22),
+                read     VARCHAR(22),
+                sname    VARCHAR(50)
+              );
+              """
+      );
+      sqlBatch.insert(table, mss);
+      sqlBatch.delete("contacts",where: "number = ?",whereArgs: [mss["sender"].toString()]);
+      sqlBatch.insert("contacts", mp);
+
+      await sqlBatch.commit().whenComplete((){
         // TODO change it according to activity
         getChats();
-      }).onError((error, stackTrace){
-        // TODO error of duplicate data insertion coming here
-        // ssd(error.toString()+" ok");
       });
-    },
-        onError: (e){}
-    );
 
-    docref.collection("Outbox").snapshots().listen((event) {
-      final sqlBatch = db.batch();
-      FirebaseFirestore dbb = FirebaseFirestore.instance;
-      final batch    = dbb.batch();
-      event.docs.forEach((m) {
-        sqlBatch.update(m.get("reciever").toString().replaceAll("+", "_"), {"status":m.get("status"), "recieved":m.get("recieved"), "read":m.get("read") });
-        if(m.get("status")==2){
-          batch.delete(docref.collection("Outbox").doc(m.get("id").toString()));
+      event.snapshot.ref.remove();
+      String _time = DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
+      fdb.ref("Messages/"+mss["sender"]+"/Outbox/"+mss["id"]).update({"recieved":_time, "status":1,}).onError((error, stackTrace){
+        ssd(error.toString());
+      });
+    });
+
+    sentt = sent.onChildChanged.listen((event) async {
+      Map<String, dynamic> mss = {};
+      event.snapshot.children.forEach((element) {
+        mss[element.key!] = element.value.toString();
+      });
+      String table = mss["reciever"].toString().replaceAll("+", "_")!;
+
+      await db.update(table, mss,where: "id = ? " ,whereArgs: [mss["id"]]).then((value){
+        // TODO change according to activity
+        if((mss["status"].toString())=="2"){
+          event.snapshot.ref.remove();
         }
-      });
-      batch.commit().onError((error, stackTrace){
-        ssd(error.toString()+" kya hua");
-      });
-      sqlBatch.commit().then((value){
-        //   TODO change here according to activity
-        getChats();
+        if(mss["reciever"].toString()==mp["number"].toString()){
+          getChats();
+        }
       }).onError((error, stackTrace){
-        ssd(error.toString()+" kuch ni");
+        ssd(error.toString());
       });
     });
 
@@ -530,6 +521,9 @@ class _ChatPageState extends State<ChatPage>{
     widget.map.forEach((key, value) {
       mp[key.toString()] = value;
     });
+    widget.allC.forEach((key, value) {
+      allContacts[key.toString()] = value;
+    });
     getChats();
     attachFirebaseListener();
     super.initState();
@@ -541,6 +535,43 @@ class _ChatPageState extends State<ChatPage>{
         title: Text(
           widget.map["name"],
         ),
+        actions: [
+          PopupMenuButton(
+            itemBuilder: (context)=>[
+              PopupMenuItem(
+                child: Text("delete chat"),
+                onTap: () async {
+                  await db.delete(mp["number"].toString().replaceAll("+", "_")).then((value){
+                    setState(() {
+                      getChats();
+                    });
+                  }).onError((error, stackTrace){
+
+                  });
+                },
+              ),
+            ],
+          )
+        ],
+        leading: Row(
+          children: [
+            IconButton(onPressed: (){
+              Navigator.pop(context);
+            },
+                icon: Icon(Icons.arrow_back)
+            ),
+
+            ClipRRect(
+              borderRadius: BorderRadius.circular(30.0),
+              child: Image.asset(
+                "assets/contact.png",
+                width: 40,
+                height: 40,
+              ),
+            )
+          ],
+        ),
+        leadingWidth: 100,
       ),
       body: mainBody(),
 
@@ -548,7 +579,8 @@ class _ChatPageState extends State<ChatPage>{
   }
   @override
   void dispose() {
-    listener.cancel();
+    sentt.off();
+    recievedd.off();
     super.dispose();
   }
 }
@@ -575,10 +607,13 @@ class _NChatState extends State<NChats>{
           child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              Image.asset(
-                "assets/lily.jpg",
-                height: 50,
-                width:  50,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(30.0),
+                child: Image.asset(
+                  "assets/contact.png",
+                  height: 50,
+                  width:  50,
+                ),
               ),
               Expanded(
                 child: Padding(
@@ -644,6 +679,16 @@ class _NChatState extends State<NChats>{
                   )
               ),
               controller: searchC,
+              onChanged: (s) async {
+                await db.query("AllContacts",where: "name like '$s%'").then((value){
+                  allContact.clear();
+                  setState(() {
+                    value.forEach((element) {
+                      allContact.add(Map<String,String>.from(element));
+                    });
+                  });
+                });
+              },
             ),
           ),
 
@@ -674,7 +719,7 @@ class _NChatState extends State<NChats>{
   List<Map<String,String>> allContact = [];
   List<Contact> allContacts = [];
   Map<String,String> allC = {};
-  var db;
+  late Database db;
 
   void startChat(Map mp){
     Navigator.pushReplacement(context,
@@ -691,13 +736,24 @@ class _NChatState extends State<NChats>{
     );
   }
 
-  filterContacts(){
+  filterContacts() async {
+
     allC.clear();
+    Batch b = db.batch();
+    b.execute('drop table AllContacts');
+    b.execute(""" create table AllContacts(
+        number VARCHAR(20),
+    name TEXT
+    );
+    """);
     allContact.forEach((element) {
       allC[element["number"].toString()] = element["name"].toString();
+      b.insert("AllContacts", element);
     });
-    setState(() {
-      isLoading = false;
+    await b.commit().whenComplete((){
+      setState(() {
+        isLoading = false;
+      });
     });
   }
   getAllinList() async {
@@ -725,7 +781,7 @@ class _NChatState extends State<NChats>{
                   name = element.displayName!;
                 }
                 check[num]=true;
-                Map<String, String> map = {"number": num, "name": name};
+                Map<String, String> map = {"number": num, "name": name,};
                 allContact.add(map);
               }
             }
@@ -746,8 +802,7 @@ class _NChatState extends State<NChats>{
             await db.execute(
                 """ create table contacts(
                     number VARCHAR(20),
-                    name TEXT,
-                    time INTEGER
+                    name TEXT
                   );
             """
             ).then((value){
@@ -755,6 +810,7 @@ class _NChatState extends State<NChats>{
           },
       ).then((value){
         db = value;
+        getAllinList();
       });
     }).catchError((e){
       ssd(e.toString()+ " 00ff");
@@ -763,7 +819,7 @@ class _NChatState extends State<NChats>{
   askPermissions() async {
     if (await Permission.contacts.request().isGranted) {
       // Either the permission was already granted before or the user just granted it.
-
+      getAllinList();
     }
     else{
       ssd("Permission not granted, please enable permission for contacts");
@@ -772,9 +828,8 @@ class _NChatState extends State<NChats>{
 
   @override
   void initState() {
+    db = widget.db;
     askPermissions();
-    getAllinList();
-    getDB();
     super.initState();
   }
   @override
@@ -865,13 +920,19 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
           onTap: (){
             startChat(mp);
           },
+          onLongPress: (){
+
+          },
           child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              Image.asset(
-                "assets/lily.jpg",
-                height: 50,
-                width:  50,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(30.0),
+                child: Image.asset(
+                  "assets/contact.png",
+                  height: 50,
+                  width:  50,
+                ),
               ),
               Expanded(
                 child: Padding(
@@ -918,7 +979,8 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
         chatlist = value;
         isLoading = false;
       });
-    }).catchError((e){
+    }).whenComplete((){
+      getAllContacts();
     });
   }
   void getAllChats() async {
@@ -933,7 +995,9 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
                     name TEXT,
                     id INTEGER,
                     time VARCHAR(10),
-                    date VARCHAR(12)
+                    date VARCHAR(12),
+                    dp TEXT,
+                    new INTEGER
                   );
               """
           );
@@ -963,8 +1027,10 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
   }
   Future<void> startChat(Map mp) async {
     await Navigator.push(context,
-        MaterialPageRoute(builder: (context) => ChatPage(map:mp,number: _number,db: db,allC: allContacts,))).then((value){
+        MaterialPageRoute(builder: (context) => ChatPage(map:mp,number: _number,db: db,allC: allContacts,))).whenComplete((){
           getAllChats2(db);
+    }).whenComplete((){
+      getAllChats2(db);
     });
   }
   void ssd(String ss){
@@ -985,85 +1051,84 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
       });
     }).onError((error, stackTrace){
       ssd(error.toString()+" con11");
+    }).whenComplete(() {
+      attachFirebaseListener();
     });
   }
 
   attachFirebaseListener(){
-    FirebaseFirestore ddb = FirebaseFirestore.instance;
-    final docref = ddb.collection("Messages").doc(_number);
 
-    docref.collection("Inbox").orderBy("id",descending: false).snapshots().listen((event) async {
-      final batch = FirebaseFirestore.instance.batch();
-      final sqlBatch = db.batch();
-      String time = DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
-      event.docs.forEach((element) async {
-        final mes= element.data();
-        String nm = element.get("sname").toString();
-        if(allContacts.containsKey(element.get("sender").toString())) {
-          nm = allContacts[element.get("sender").toString()]!;
-        }
-        final mp = {
-          "number" : element.get("sender").toString(),
-          "name"   : nm,
-          "time"   : element.get("time").toString(),
-          "date"   : element.get("date").toString(),
-          "id"     : element.get("id")
-        };
-        batch.delete(docref.collection("Inbox").doc(mes["id"].toString()));
-        batch.update(ddb.collection("Messages").doc(mes["sender"].toString()).collection("Outbox").doc(mes["id"].toString()), {"status":1,"recieved":time});
-        mes["recieved"] = time;
-        mes["status"]   = 1;
-        sqlBatch.execute(
-            """
-        create table IF NOT EXISTS """+element.get("sender").replaceAll("+", "_")+""" (
-          message TEXT,
-          sender  VARCHAR(20),
-          reciever VARCHAR(20),
-          time    VARCHAR(10),
-          date    VARCHAR(12),
-          id      INTEGER UNIQUE,
-          status  INTEGER,
-          recieved VARCHAR(22),
-          read     VARCHAR(22),
-          sname    VARCHAR(50)
-        );
-        """
-        );
-        sqlBatch.insert(element.get("sender").replaceAll("+", "_"), mes);
-        sqlBatch.delete("contacts",where: "number = ?",whereArgs: [mes["sender"].toString()]);
-        sqlBatch.insert("contacts", mp);
+    FirebaseDatabase fdb = FirebaseDatabase.instance;
+    final recieved = fdb.ref("Messages/$_number/Inbox");
+    final sent     = fdb.ref("Messages/$_number/Outbox");
+
+    recieved.onChildAdded.listen((event) async {
+      Map<String, dynamic> mss = {};
+      event.snapshot.children.forEach((element) {
+        mss[element.key!] = element.value.toString();
       });
-      batch.commit().onError((error, stackTrace){
-        ssd(error.toString()+" 2done");
-      });
-      await sqlBatch.commit().then((value){
+      String table = mss["sender"].toString().replaceAll("+", "_")!;
+      Batch sqlBatch = db.batch();
+
+      String nm = mss["sname"].toString();
+      if(allContacts.containsKey(mss["sender"].toString())) {
+        nm = allContacts[mss["sender"].toString()]!;
+      }
+
+      final mp = {
+        "number" : mss["sender"].toString(),
+        "name"   : nm,
+        "time"   : mss["time"].toString(),
+        "date"   : mss["date"].toString(),
+        "id"     : mss["id"]
+      };
+      sqlBatch.execute(
+          """
+              create table IF NOT EXISTS """+table+""" (
+                message TEXT,
+                sender  VARCHAR(20),
+                reciever VARCHAR(20),
+                time    VARCHAR(10),
+                date    VARCHAR(12),
+                id      INTEGER UNIQUE,
+                status  INTEGER,
+                recieved VARCHAR(22),
+                read     VARCHAR(22),
+                sname    VARCHAR(50)
+              );
+              """
+      );
+      sqlBatch.insert(table, mss);
+      sqlBatch.delete("contacts",where: "number = ?",whereArgs: [mss["sender"].toString()]);
+      sqlBatch.insert("contacts", mp);
+
+      await sqlBatch.commit().whenComplete((){
         // TODO change it according to activity
         getAllChats2(db);
-      }).onError((error, stackTrace){
-        // TODO error of duplicate data insertion coming here
-        // ssd(error.toString()+" ok");
       });
-    },
-    onError: (e){}
-    );
 
-    docref.collection("Outbox").snapshots().listen((event) {
-      final sqlBatch = db.batch();
-      FirebaseFirestore dbb = FirebaseFirestore.instance;
-      final batch    = dbb.batch();
-      event.docs.forEach((m) {
-        sqlBatch.update(m.get("reciever").toString().replaceAll("+", "_"), {"status":m.get("status"), "recieved":m.get("recieved"), "read":m.get("read") });
-        if(m.get("status")==2){
-          batch.delete(dbb.collection("Messages").doc(m.get("sender").toString()).collection("Outbox").doc(m.get("id").toString()));
+      event.snapshot.ref.remove();
+      String _time = DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
+      fdb.ref("Messages/"+mss["sender"]+"/Outbox/"+mss["id"]).update({"recieved":_time, "status":1,}).onError((error, stackTrace){
+        ssd(error.toString());
+      });
+    });
+
+    sent.onChildChanged.listen((event) async {
+      Map<String, dynamic> mss = {};
+      event.snapshot.children.forEach((element) {
+        mss[element.key!] = element.value.toString();
+      });
+      String table = mss["reciever"].toString().replaceAll("+", "_")!;
+
+      await db.update(table, mss,where: "id = ? " ,whereArgs: [mss["id"]]).then((value){
+        // TODO change according to activity
+        if(mss["status"]==2){
+          ssd("ss");
+          event.snapshot.ref.remove();
         }
-      });
-      batch.commit().onError((error, stackTrace){
-        ssd(error.toString()+" ni samjha");
-      });
-      sqlBatch.commit().then((value){
-      //   TODO change here according to activity
       }).onError((error, stackTrace){
-        ssd(error.toString()+" samjha ?");
+        ssd(error.toString());
       });
     });
 
@@ -1074,7 +1139,7 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
     super.initState();
     _number = widget.number;
     getAllChats();
-    attachFirebaseListener();
+    getAllContacts();
     WidgetsBinding.instance.addObserver(this);
   }
   @override
