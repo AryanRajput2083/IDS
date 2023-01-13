@@ -14,6 +14,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:intl/intl.dart';
@@ -77,12 +78,13 @@ class MyApp extends StatelessWidget {
     if(prefs.getBool('loggedin')!=null){
       islogged    = prefs.getBool('loggedin')!;
     }
-    String num = "";
+    String key = "";
     if(prefs.getString('number')!=null){
-      num = prefs.getString('number')!;
+      key = prefs.getString('number')!;
     }
     if(isDataSaved!=null&&isDataSaved){
-      return  HomePage(title: "Welcome",number: num,);
+      return  HomePage(title: "Welcome",Key : key,);
+      // return const RegistrationPage(title: "Register", i: 3);
     }
     else if(islogged!=null&&islogged){
       return const RegistrationPage(title: "Register", i: 3);
@@ -95,7 +97,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'IDS',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
@@ -107,50 +109,1128 @@ class MyApp extends StatelessWidget {
 
 
 
-class Chats extends StatefulWidget{
-  const Chats({super.key, required this.title, required this.number});
+class Search extends StatefulWidget{
+  const Search({super.key, required this.title});
 
   final String title;
-  final String number;
+  @override
+  State<Search> createState() => _SearchState();
+}
+class _SearchState extends State<Search>{
+
+  @override
+  void initState() {
+    super.initState();
+
+  }
+
+  TextEditingController searchC = new TextEditingController();
+  bool isloading = false;
+  List<Map<String, dynamic>> ppl = [];
+  bool srchd = false;
+
+  search() async {
+    String ff = searchC.text.trim();
+    List<String> ll = searchC.text.trim().split(" ");
+    if(ll.length<1){
+      return;
+    }
+    setState(() {
+      isloading = true;
+    });
+    await FirebaseFirestore.instance.collection("Users").where("Name",whereIn: [ff,ff.toLowerCase(),ff.toUpperCase()]).get().then((value){
+      ppl.clear();
+      value.docs.forEach((element) {
+        ppl.add(element.data() as Map<String, dynamic>);
+      });
+    });
+    if(ll.length>1) {
+      await FirebaseFirestore.instance.collection("Users").where(
+          "Name", whereIn: ll).get().then((value) {
+        value.docs.forEach((element) {
+          ppl.add(element.data() as Map<String, dynamic>);
+        });
+      });
+    }
+    setState(() {
+      srchd = true;
+      isloading = false;
+    });
+  }
+
+  Widget main(){
+    return Container(
+      margin: EdgeInsets.all(0),
+      padding: EdgeInsets.all(4),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          Card(
+            elevation: 1,
+            child: TextField(
+              decoration: InputDecoration(
+                  hintText: "Search",
+                  filled: true,
+                  fillColor: Colors.white,
+                  prefixIcon: Icon(
+                      Icons.search
+                  ),
+              ),
+              keyboardType: TextInputType.name,
+              controller: searchC,
+            ),
+          ),
+
+          Expanded(
+            child: results(),
+          )
+
+        ],
+      ),
+    );
+  }
+  Widget results(){
+    if(isloading){
+      return Container(
+        alignment: Alignment.center,
+        child: CircularProgressIndicator(),
+      );
+    }
+    if(ppl.length==0){
+      return Container(
+        alignment: Alignment.center,
+        child: srchd?Text("No result found"):Text("search people to connect them"),
+      );
+    }
+    return ListView.builder(
+      itemCount: ppl.length,
+      itemBuilder: (BuildContext ctx, int i){
+        return item(i);
+      },
+    );
+  }
+  Widget item(int i){
+    Map<String, dynamic> mp = ppl[i];
+    bool b=(mp['dp']=='');
+    return Card(
+      child: InkWell(
+        onTap: () async {
+          await Navigator.push(context,
+              MaterialPageRoute(builder: (context) => Profile(Key: mp["Key"], title: mp['Name'],)));
+        },
+        // child: Text("data"),
+        child: ListTile(
+          title: Text(mp['Name']),
+          leading: b?CircleAvatar(
+            foregroundImage: AssetImage("assets/contact.png"),
+          ):CircleAvatar(
+            foregroundImage: NetworkImage(mp['dp']),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+
+      appBar: AppBar(
+        title: Text(widget.title),
+      ),
+
+      body: main(),
+
+      floatingActionButton: FloatingActionButton(
+        onPressed: (){
+          search();
+        },
+        child: Icon(
+          Icons.search,
+        ),
+      ),
+
+    );
+  }
+
+}
+
+class Profile extends StatefulWidget{
+  const Profile({super.key, required this.title, required this.Key});
+  
+  final String title, Key;
+  @override
+  State<Profile> createState() => _ProfileState();
+}
+class _ProfileState extends State<Profile>{
+
+  @override
+  void initState() {
+    mp['ky'] = widget.Key;
+    getData();
+    getdb();
+    super.initState();
+    initF();
+  }
+
+  bool isloading = true;
+  Map<String, dynamic> mp = new Map();
+  bool isprof = false;
+  Map<String, dynamic> prof = new Map();
+  late Database db;
+  String _key = '';
+
+  initF() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? ph = await prefs.getString('number');
+    final key = await prefs.getString("ky")!;
+    if (key != null) {
+      _key = key;
+    }
+  }
+  getData() async {
+    int g=3;
+    await FirebaseDatabase.instance.ref("Users/${mp['ky']}/personal/Name").get().then((value){
+      mp['name'] = value.value;
+      g--;
+      if(g==0){
+        setState(() {
+          isloading = false;
+        });
+      }
+    });
+    await FirebaseDatabase.instance.ref("Users/${mp['ky']}/personal/dp").get().then((value){
+      mp['dp'] = value.value;
+      g--;
+      if(g==0){
+        setState(() {
+          isloading = false;
+        });
+      }
+    });
+    await FirebaseDatabase.instance.ref("Users/${mp['ky']}/professional").get().then((value){
+      if(value.exists){
+        value.children.forEach((element) {
+          prof[element.key!] = element.value;
+        });
+        setState(() {
+          isprof = true;
+        });
+      }
+      g--;
+      if(g==0){
+        setState(() {
+          isloading = false;
+        });
+      }
+    });
+  }
+  getdb() async {
+    await getDatabasesPath().then((value) async {
+      String Path = value.toString()+"/database.db";
+      await openDatabase(Path,version: 1,
+        onCreate: (Database db,int version) async {
+          Batch b = db.batch();
+          b.execute(
+              """ create table AllChats(
+                    id INTEGER,
+                    time VARCHAR(10),
+                    date VARCHAR(12),
+                    message TEXT,            
+                    sender TEXT,
+                    receiver TEXT,                    
+                    status INTEGER,
+                    received VARCHAR(22),
+                    read     VARCHAR(22),                    
+                    ky TEXT,
+                    uniq TEXT UNIQUE
+                  );
+              """
+          );
+          b.execute(
+              """
+            create table AllContacts(
+                    number VARCHAR(20),
+                    name TEXT,
+                    dp TEXT,
+                    ky TEXT
+                  );
+            """
+          );
+          b.execute(
+              """
+            create table AllNotices(
+                    admin TEXT,
+                    name TEXT,
+                    time VARCHAR(25),
+                    id INTEGER UNIQUE,
+                    Subject TEXT,
+                    Body TEXT,
+                    status INTEGER,
+                    favourite INTEGER
+                  );
+            """
+          );
+          await b.commit().then((value){
+          });
+        },
+      ).then((value){
+        db = value;
+      });
+    }).catchError((e){
+    });
+  }
+
+  Widget main(){
+    return ListView(
+      children: [
+        dp(),
+        personal(),
+        professional()
+      ],
+    );
+  }
+  Widget dp(){
+    double h = MediaQuery.of(context).size.height;
+    return Container(
+      padding: EdgeInsets.only(top: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: dp2(h/4),
+      ),
+    );
+  }
+  Widget dp2(double h){
+    if(mp['dp'].toString().startsWith('http')){
+      return Image.network(
+        mp['dp'],
+        height: h,
+        width:  h,
+      );
+    }
+    return Image.asset(
+      "assets/contact.png",
+      height: h,
+      width:  h,
+    );
+  }
+  Widget hd(int i){
+    if(i==0){
+      return Text(
+        "Personal Details",
+        style: TextStyle(
+          fontSize: 20,
+          color: Colors.blueGrey,
+        ),
+      );
+    }
+    return Container();
+  }
+  Widget personal(){
+    return Container(
+      padding: EdgeInsets.all(8),
+      child: Card(
+        elevation: 4,
+        child: Container(
+          padding: EdgeInsets.all(5),
+          width: double.infinity,
+          child: Column(
+            children: [
+              Container(
+                padding: EdgeInsets.only(left: 4, bottom: 4),
+                width: double.infinity,
+                child: Text(
+                  "Name",
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold
+                  ),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.only(left: 4, bottom: 4),
+                width: double.infinity,
+                child: Text(
+                  mp["name"].toString(),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  child: Text(
+                    "Send Message",
+                  ),
+                  onPressed: () async {
+                    await Navigator.push(context,
+                        MaterialPageRoute(builder: (context) => ChatPage(map:mp,Key: _key,db: db)));
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  Widget professional(){
+    if(!isprof){
+      return Container();
+    }
+    String s = "";
+    List<dynamic> kyy= [], vlu = [];
+    prof.forEach((key, value) {
+      kyy.add(key);
+      vlu.add(value);
+    });
+    return Container(
+      padding: EdgeInsets.all(8),
+      child: Card(
+        elevation: 4,
+        child: Container(
+          padding: EdgeInsets.all(4),
+          constraints: BoxConstraints(
+            minHeight: 100,
+            maxHeight: 250,
+          ),
+          child: ListView.builder(
+            itemCount: prof.length,
+            itemBuilder: (BuildContext b, int i){
+              return Container(
+                child: Column(
+                  children: [
+                    hd(i),
+                    Container(
+                      padding: EdgeInsets.only(left: 4, bottom: 4),
+                      width: double.infinity,
+                      child: Text(
+                        kyy[i].toString(),
+                        style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.bold
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: EdgeInsets.only(left: 4, bottom: 4),
+                      width: double.infinity,
+                      child: Text(
+                        vlu[i].toString(),
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+      ),
+      body: isloading?
+      Container(
+        alignment: Alignment.center,
+        child: CircularProgressIndicator(),
+      ):
+      main(),
+    );
+  }
+
+}
+
+
+
+class Account extends StatefulWidget{
+  const Account({super.key, required this.title});
+
+  final String title;
+  @override
+  State<Account> createState() => _AccountState();
+}
+class _AccountState extends State<Account>{
+
+  @override
+  void initState() {
+    initF();
+    super.initState();
+  }
+  initF() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? ph = await prefs.getString('number');
+    final key = await prefs.getString("ky")!;
+    if(ph!=null){
+      phoneNumber = ph;
+    }
+    if(key!=null){
+      _key = key;
+    }
+
+    FirebaseDatabase.instance.ref("Users/$_key/personal").get().then((value){
+      pers = new Map();
+      value.children.forEach((element) {
+        pers[element.key!.toString()] = element.value!;
+      });
+      setState(() {
+        file=pers["dp"];
+      });
+    });
+    FirebaseDatabase.instance.ref("Users/$_key/professional").get().then((value){
+      if(value.exists) {
+        prof = new Map();
+        value.children.forEach((element) {
+          prof[element.key!.toString()] = element.value!;
+        });
+      }
+      else{
+        prof = "";
+      }
+      setState(() {
+
+      });
+    });
+  }
+
+  String _key = '';
+  String phoneNumber = "";
+  var pers = null;
+  var prof = null;
+  var file = null;
+  late Database db;
+  bool isloading = false;
+
+
+  showDialogBox(){
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return SimpleDialog(
+          title: Text('Action'),
+          children: [
+            SimpleDialogOption(
+              child: Text('Remove photo'),
+              onPressed: (){
+                removedp();
+                Navigator.of(ctx).pop();
+                setState(() {
+                  file = null;
+                });
+              },
+            ),
+            SimpleDialogOption(
+              child: Text('Select from gallery'),
+              onPressed: (){
+                Navigator.of(ctx).pop();
+                pickFile();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+  pickFile() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+    );
+    if (result != null) {
+      await ImageCropper().cropImage(
+        sourcePath: result.files.single.path!,
+        aspectRatioPresets: [
+          CropAspectRatioPreset.square,
+        ],
+        uiSettings: [
+          AndroidUiSettings(
+              toolbarTitle: 'Crop the image',
+              toolbarColor: Colors.blue,
+              toolbarWidgetColor: Colors.white,
+              initAspectRatio: CropAspectRatioPreset.square,
+              lockAspectRatio: true),
+          IOSUiSettings(
+            title: 'Crop the image',
+          ),
+          WebUiSettings(
+            context: context,
+          ),
+        ],
+      ).then((value){
+        // TODO compress image function not working
+        testCompressAndGetFile(File(value!.path));
+        // setState(() {
+        //   file = File(value!.path);
+        // });
+      }).onError((error, stackTrace){
+        // ssd(error.toString());
+      });
+    } else {
+      // User canceled the picker
+    }
+  }
+  testCompressAndGetFile(File fil) async {
+    final tmpDir = (await getTemporaryDirectory()).path;
+    final targetPath = '$tmpDir/temp.jpeg';
+    await FlutterImageCompress.compressAndGetFile(
+      fil.absolute.path,targetPath,
+      minWidth: 500,
+      minHeight: 500,
+    )
+        .then((value){
+      if(value!=null){
+        setState(() {
+          // file = File(fil.absolute.path);
+          file = value!;
+        });
+        uploadDP();
+      }
+    }).onError((error, stackTrace){
+      print(error.toString());
+    });
+  }
+  uploadDP(){
+    final storage = FirebaseStorage.instance.ref('displayPicture/${_key}.jpeg');
+    final uploadTask = storage.putFile(file);
+    uploadTask.snapshotEvents.listen((TaskSnapshot taskSnapshot) async {
+      switch (taskSnapshot.state) {
+        case TaskState.running:
+          break;
+        case TaskState.error:
+        // Handle unsuccessful uploads
+          print("failed to upload image");
+          break;
+        case TaskState.success:
+          String url = await storage.getDownloadURL();
+          await FirebaseDatabase.instance.ref("Users/$_key/personal/dp").set(url);
+          await FirebaseFirestore.instance.collection("Users").doc(phoneNumber).update(
+              {
+                "dp" : url
+              });
+          setState(() {
+            file = url;
+          });
+          break;
+      }
+    });
+  }
+  removedp(){
+    final storage = FirebaseStorage.instance.ref('displayPicture/${_key}.jpeg');
+    FirebaseFirestore.instance.collection("Users").doc(phoneNumber).update(
+        {
+          "dp" : ""
+        });
+    storage.delete().then((value) => file=null);
+  }
+  deleteAccount1(){
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text('Delete'),
+          content: Text("All your data will be lost once you delete your account. Are you sure to delete your account?"),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+              },
+              child: Text(
+                "CANCEL",
+                style: TextStyle(
+                    color: Colors.green
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                deleteAccount2();
+              },
+              child: Text(
+                "DELETE",
+                style: TextStyle(
+                    color: Colors.red
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+  deleteAccount2(){
+    setState(() {
+      isloading = true;
+    });
+    int g=4;
+    FirebaseDatabase.instance.ref("Messages/$_key").remove().then((value){
+      g--;
+      if(g==0){
+        deleteAccount3();
+      }
+    });
+    FirebaseDatabase.instance.ref("Users/$_key").remove().then((value){
+      g--;
+      if(g==0){
+        deleteAccount3();
+      }
+    });
+    FirebaseDatabase.instance.ref("Contacts/$phoneNumber").remove().then((value){
+      g--;
+      if(g==0){
+        deleteAccount3();
+      }
+    });
+    FirebaseFirestore.instance.collection("Users").doc(phoneNumber).delete().then((value){
+      g--;
+      if(g==0){
+        deleteAccount3();
+      }
+    });
+  }
+  deleteAccount3() async {
+    SharedPreferences preferences = await SharedPreferences.getInstance();
+    await preferences.clear();
+    await getDatabasesPath().then((value) async {
+      String Path = value.toString() + "/database.db";
+      await deleteDatabase(Path);
+    });
+    User? u = FirebaseAuth.instance.currentUser;
+    if(u!=null){
+      await u.delete().then((v){
+        SystemNavigator.pop();
+      }).onError((error, stackTrace){
+        FirebaseAuth.instance.signOut();
+        SystemNavigator.pop();
+      });
+    }
+    SystemNavigator.pop();
+  }
+  feedbackPage() async{
+    print("ffff");
+    await Navigator.push(context,
+        MaterialPageRoute(builder: (context) => Feedback(k: _key,))).whenComplete((){
+    });
+  }
+
+  Widget dp(){
+    double h = MediaQuery.of(context).size.height;
+    return Container(
+      padding: EdgeInsets.only(top: 8),
+      child: GestureDetector(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: dp2(h/3),
+        ),
+        onTap: () {
+          showDialogBox();
+        },
+      ),
+    );
+  }
+  Widget dp2(double h){
+    if(file!=null&&file.startsWith('http')){
+      print("file.runtimeType2");
+      return Image.network(
+        file,
+        height: h,
+        width:  h,
+      );
+    }
+    if(file!=null&&file!=""){
+      print("file.runtimeType1");
+      return Image.file(
+        file,
+        height: h,
+        width:  h,
+      );
+    }
+    print("file.runtimeType");
+    return Image.asset(
+      "assets/contact.png",
+      height: h,
+      width:  h,
+    );
+  }
+  Widget hd(int i){
+    if(i==0){
+      return Text(
+        "Professional Details",
+        style: TextStyle(
+          fontSize: 20,
+          color: Colors.blueGrey,
+        ),
+      );
+    }
+    return Container();
+  }
+  Widget personalDetail(){
+    if(pers==null){
+      return Container(
+        padding: EdgeInsets.all(8),
+        child: Card(
+          child: Container(
+            child: LinearProgressIndicator(),
+          ),
+        ),
+      );
+    }
+    return Container(
+      padding: EdgeInsets.all(8),
+      child: Card(
+        elevation: 4,
+        child: Container(
+          padding: EdgeInsets.all(5),
+          width: double.infinity,
+          child: Column(
+            children: [
+              Text(
+                "Personal Details",
+                style: TextStyle(
+                  fontSize: 20,
+                  color: Colors.blueGrey,
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.only(left: 4, bottom: 4),
+                width: double.infinity,
+                child: Text(
+                  "Name",
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold
+                  ),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.only(left: 4, bottom: 4),
+                width: double.infinity,
+                child: Text(
+                  pers["Name"].toString(),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.only(left: 4, bottom: 4),
+                width: double.infinity,
+                child: Text(
+                  "Date of Birth",
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold
+                  ),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.only(left: 4, bottom: 4),
+                width: double.infinity,
+                child: Text(
+                  pers["DOB"].toString(),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.only(left: 4, bottom: 4),
+                width: double.infinity,
+                child: Text(
+                  "Phone number",
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold
+                  ),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.only(left: 4, bottom: 4),
+                width: double.infinity,
+                child: Text(
+                  pers["Phone"].toString(),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  Widget professionalDetail(){
+    if(prof==null){
+      return Container();
+    }
+    if(prof==""){
+      return Container(
+        alignment: Alignment.center,
+        child: TextButton(
+          child: Container(
+            alignment: Alignment.center,
+            padding: EdgeInsets.all(6),
+            child: Text("Add professional data to convert to professional account"),
+          ),
+          onPressed: () async {
+            await Navigator.push(context, MaterialPageRoute(builder: (context) => RegistrationPage(title: "Professional Details", i: 4))).then((value){
+
+            });
+          },
+        ),
+      );
+    }
+    String s = "";
+    List<dynamic> kyy= [], vlu = [];
+    prof.forEach((key, value) {
+      kyy.add(key);
+      vlu.add(value);
+    });
+    return Container(
+      padding: EdgeInsets.all(8),
+      child: Card(
+        elevation: 4,
+        child: Container(
+          padding: EdgeInsets.all(4),
+          constraints: BoxConstraints(
+            minHeight: 100,
+            maxHeight: 250,
+          ),
+          child: ListView.builder(
+            itemCount: prof.length,
+            itemBuilder: (BuildContext b, int i){
+              return Container(
+                child: Column(
+                  children: [
+                    hd(i),
+                    Container(
+                      padding: EdgeInsets.only(left: 4, bottom: 4),
+                      width: double.infinity,
+                      child: Text(
+                        kyy[i].toString(),
+                        style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.bold
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: EdgeInsets.only(left: 4, bottom: 4),
+                      width: double.infinity,
+                      child: Text(
+                        vlu[i].toString(),
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+
+        appBar: AppBar(
+          title: Text(widget.title),
+          actions: [
+            IconButton(
+              icon: Icon(
+                Icons.feedback,
+              ),
+              onPressed: (){
+                feedbackPage();
+              },
+            ),
+            PopupMenuButton(
+              itemBuilder: (ctx)=>[
+                PopupMenuItem(
+                  child: Text("delete your account"),
+                  value: 0,
+                ),
+              ],
+              onSelected: (i){
+                switch (i){
+                  case 0:
+                    deleteAccount1();
+                    break;
+                  default:
+                    break;
+                }
+              },
+            )
+          ],
+        ),
+
+        body: isloading?
+        Container(
+          alignment: Alignment.center,
+          child: CircularProgressIndicator(),
+        )
+            :
+        Container(
+          color: Color.fromRGBO(219, 219, 219, 1.0),
+          child: ListView(
+            children: [
+              dp(),
+              personalDetail(),
+              professionalDetail()
+            ],
+          ),
+        )
+
+    );
+  }
+
+}
+
+class Feedback extends StatefulWidget{
+  const Feedback({super.key, required this.k});
+
+  final String k;
+  @override
+  State<Feedback> createState() => _FeedbackState();
+}
+class _FeedbackState extends State<Feedback>{
+
+  @override
+  void initState() {
+    // TODO: implement initState
+    super.initState();
+    FirebaseDatabase.instance.ref("Users/${widget.k}/personal").get().then((value){
+      value.children.forEach((e) {
+        mp[e.key!] = e.value;
+      });
+    });
+  }
+
+  TextEditingController c = new TextEditingController();
+  Map<String, dynamic> mp = new Map();
+
+  sendF(String h){
+    if(h.trim().isNotEmpty){
+      mp['message'] = h.trim();
+      FirebaseDatabase.instance.ref("Feedback").push().set(mp).then((value){
+        Navigator.pop(context);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Feedback"),
+      ),
+      body: Container(
+        padding: EdgeInsets.all(8),
+        width: double.infinity,
+        child: TextField(
+          controller: c,
+          decoration: InputDecoration(
+            hintText: "Enter feedback",
+          ),
+          maxLines: 15,
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        child: Icon(
+            Icons.send_sharp
+        ),
+        onPressed: (){
+          sendF(c.text);
+        },
+      ),
+    );
+  }
+
+}
+
+
+
+class Chats extends StatefulWidget{
+  const Chats({super.key, required this.title});
+
+  final String title;
   @override
   State<Chats> createState() => _ChatState();
 }
 class _ChatState extends State<Chats> with WidgetsBindingObserver{
 
+  initF() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? ph1= prefs.getString("ky")!;
+    if(ph1!=null){
+      _key = ph1;
+    }
+  }
   @override
   initState() {
     super.initState();
-    _number = widget.number;
-    getAllChats();
+    initF();
+    getdb();
     WidgetsBinding.instance.addObserver(this);
   }
 
   TextEditingController searchC = new TextEditingController();
-  String _number = "";
+  String _key = "";
 
   int _index = 0;
-  bool isLoading = true;
+  bool isLoading = false;
   List<Map> chatlist = [];
 
   String Path = "";
   late Database db;
   Map<String,String> allContacts = {};
-
-  getAllChats() async {
+  //name, number, key, id, dp, message, sender, unread, date, time, status
+  getdb() async {
     await getDatabasesPath().then((value) async {
       Path = value.toString()+"/database.db";
       await openDatabase(Path,version: 1,
           onCreate: (Database db,int version) async {
             Batch b = db.batch();
             b.execute(
-                """ create table contacts(
-                    number VARCHAR(20),
-                    name TEXT,
+                """ create table AllChats(
                     id INTEGER,
                     time VARCHAR(10),
                     date VARCHAR(12),
-                    dp TEXT,
-                    new INTEGER
+                    message TEXT,            
+                    sender TEXT,
+                    receiver TEXT,                    
+                    status INTEGER,
+                    received VARCHAR(22),
+                    read     VARCHAR(22),                    
+                    ky TEXT,
+                    uniq TEXT UNIQUE
                   );
               """
             );
@@ -159,7 +1239,8 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
             create table AllContacts(
                     number VARCHAR(20),
                     name TEXT,
-                    dp TEXT
+                    dp TEXT,
+                    ky TEXT
                   );
             """
             );
@@ -183,45 +1264,61 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
               });
             });
           },
-          onOpen: (Database d) async {
-          }
       ).then((value){
         db = value;
-        getAllChats2(db);
+        attachFirebaseListener();
+        getAllChats(db);
       });
     }).catchError((e){
       ssd(e.toString()+" ssss");
     });
   }
-  getAllChats2(Database db) async {
-    await db.query("contacts",orderBy: "id DESC").then((value){
-      print("hello");
-      setState(() {
-        chatlist = value;
-        isLoading = false;
-      });
-    }).whenComplete((){
-      getAllContacts();
-    });
-  }
-  getAllContacts() async {
-    allContacts.clear();
-    await db.query("AllContacts").then((value){
-      value.forEach((e) {
-        allContacts[e["number"].toString()] = e["name"].toString();
-      });
+  getAllChats(Database db) async {
+    String qu = """
+      select AllContacts.name as name, AllContacts.number as number, AllChats.ky as key, max(AllChats.id) as id, AllContacts.dp as dp,
+        AllChats.message as message, AllChats.sender as sender, AllChats.date as date, AllChats.time as time, AllChats.status as status,
+        count(CASE WHEN not AllChats.status=2 AND not AllChats.sender="$_key" THEN 0 ELSE NULL END) as unread
+        from AllChats left join AllContacts on AllContacts.ky=AllChats.ky
+        where number IS NOT NULL group by key order by id desc; 
+    """;
+    if(widget.title=="Requests"){
+      qu = """
+      select AllContacts.name as name, AllContacts.number as number, AllChats.ky as key, max(AllChats.id) as id, AllContacts.dp as dp,
+        AllChats.message as message, AllChats.sender as sender, AllChats.date as date, AllChats.time as time, AllChats.status as status,
+        count(CASE WHEN not AllChats.status=2 AND not AllChats.sender="$_key" THEN 0 ELSE NULL END) as unread
+        from AllChats left join AllContacts on AllContacts.ky=AllChats.ky
+        where number IS NULL group by key order by id desc; 
+      """;
+    }
+    await db.rawQuery(qu).then((value){
+      if(widget.title=='Requests'){
+        chatlist.clear();
+        value.forEach((element) async {
+          Map<String, dynamic> m = new Map();
+          m.addAll(element);
+          await FirebaseDatabase.instance.ref("Users/$_key/personal/Name").get().then((v){
+            m['name'] = v.value;
+          });
+          chatlist.add(m);
+        });
+        setState(() {
+
+        });
+      }
+      else {
+        setState(() {
+          chatlist = value;
+          isLoading = false;
+        });
+      }
     }).onError((error, stackTrace){
-      ssd(error.toString()+" con11");
-    }).whenComplete(() {
-      attachFirebaseListener();
+      ssd(error.toString());
     });
   }
-  Future<void> startChat(Map mp) async {
+  startChat(Map mp) async {
     await Navigator.push(context,
-        MaterialPageRoute(builder: (context) => ChatPage(map:mp,number: _number,db: db,allC: allContacts,))).whenComplete((){
-      getAllChats2(db);
-    }).whenComplete((){
-      getAllChats2(db);
+        MaterialPageRoute(builder: (context) => ChatPage(map:mp,Key: _key,db: db))).whenComplete((){
+      getAllChats(db);
     });
   }
   void ssd(String ss){
@@ -234,61 +1331,28 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
       },
     );
   }
-  
+
   attachFirebaseListener(){
 
     FirebaseDatabase fdb = FirebaseDatabase.instance;
-    final recieved = fdb.ref("Messages/$_number/Inbox");
-    final sent     = fdb.ref("Messages/$_number/Outbox");
+    final received = fdb.ref("Messages/$_key/Inbox");
+    final sent     = fdb.ref("Messages/$_key/Outbox");
 
-    recieved.onChildAdded.listen((event) async {
+    received.onChildAdded.listen((event) async {
       Map<String, dynamic> mss = {};
       event.snapshot.children.forEach((element) {
         mss[element.key!] = element.value.toString();
       });
-      String table = mss["sender"].toString().replaceAll("+", "_")!;
-      Batch sqlBatch = db.batch();
-
-      String nm = mss["sname"].toString();
-      if(allContacts.containsKey(mss["sender"].toString())) {
-        nm = allContacts[mss["sender"].toString()]!;
-      }
-
-      final mp = {
-        "number" : mss["sender"].toString(),
-        "name"   : nm,
-        "time"   : mss["time"].toString(),
-        "date"   : mss["date"].toString(),
-        "id"     : mss["id"]
-      };
-      sqlBatch.execute(
-          """
-              create table IF NOT EXISTS """+table+""" (
-                message TEXT,
-                sender  VARCHAR(20),
-                reciever VARCHAR(20),
-                time    VARCHAR(10),
-                date    VARCHAR(12),
-                id      INTEGER UNIQUE,
-                status  INTEGER,
-                recieved VARCHAR(22),
-                read     VARCHAR(22),
-                sname    VARCHAR(50)
-              );
-              """
-      );
-      sqlBatch.insert(table, mss);
-      sqlBatch.delete("contacts",where: "number = ?",whereArgs: [mss["sender"].toString()]);
-      sqlBatch.insert("contacts", mp);
-
-      await sqlBatch.commit().whenComplete((){
-        // TODO change it according to activity
-        getAllChats2(db);
+      mss["ky"] = mss["sender"];
+      db.insert("AllChats", mss).then((value){}).onError((error, stackTrace){
+        ssd(error.toString());
+      }).whenComplete((){
+      //   TODO change according to activity
+        getAllChats(db);
       });
-
       event.snapshot.ref.remove();
       String _time = DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
-      fdb.ref("Messages/"+mss["sender"]+"/Outbox/"+mss["id"]).update({"recieved":_time, "status":1,}).onError((error, stackTrace){
+      fdb.ref("Messages/"+mss["sender"]+"/Outbox/"+mss["id"]).update({"received":_time, "status":1,}).onError((error, stackTrace){
         ssd(error.toString());
       });
     });
@@ -298,12 +1362,9 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
       event.snapshot.children.forEach((element) {
         mss[element.key!] = element.value.toString();
       });
-      String table = mss["reciever"].toString().replaceAll("+", "_")!;
-
-      await db.update(table, mss,where: "id = ? " ,whereArgs: [mss["id"]]).then((value){
+      db.update("AllChats", mss,where: "uniq = ? " ,whereArgs: [mss["uniq"]]).then((value){
         // TODO change according to activity
         if(mss["status"]==2){
-          ssd("ss");
           event.snapshot.ref.remove();
         }
       }).onError((error, stackTrace){
@@ -313,6 +1374,31 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
 
   }
 
+  Widget status(int i){
+    if(i==1){
+      return Icon(
+        size: 14,
+        Icons.done_all_sharp
+      );
+    }
+    if(i==2){
+      return Icon(
+        size: 14,
+        Icons.done_all_rounded,
+        color: Colors.red,
+      );
+    }
+    if(i==-1){
+      return Icon(
+        size: 14,
+        Icons.ad_units_sharp,
+      );
+    }
+    return Icon(
+        size: 14,
+        Icons.done
+    );
+  }
   Widget navigationText(String s,int i){
     if(_index == i){
       return Text(
@@ -357,6 +1443,14 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
     }
   }
   Widget ContactItem(Map mp,String image){
+    String date = DateFormat("dd-MM-yyyy").format(DateTime.now());
+    if(date!=mp['date']){
+      date = mp['date'];
+    }
+    else{
+      date = mp['time'];
+    }
+    int c = mp['unread'];
     return Card(
         child: InkWell(
           onTap: (){
@@ -365,7 +1459,9 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
           onLongPress: (){
 
           },
-          child: Row(
+          child: Container(
+            padding: EdgeInsets.all(4),
+            child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               ClipRRect(
@@ -377,24 +1473,73 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
                 ),
               ),
               Expanded(
-                child: Padding(
+                child: Container(
                   padding: EdgeInsets.only(left: 4),
+                  height: 40,
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Container(
-                        width: double.infinity,
-                        child: Text(
-                          mp["name"],
-                          textAlign: TextAlign.left,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Container(
+                              width: double.infinity,
+                              child: Text(
+                                mp["name"]!=null?mp["name"]:mp[""],
+                                textAlign: TextAlign.left,
+                              ),
+                            ),
+                          ),
+                          Visibility(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                alignment: Alignment.center,
+                                width: 16,
+                                height: 16,
+                                color: Colors.green,
+                                padding: EdgeInsets.all(2),
+                                child: Text(
+                                  c.toString(),
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            visible: c>0,
+                          ),
+                        ],
                       ),
-                      Container(
-                        width: double.infinity,
-                        child: Text(
-                          mp["number"],
-                          textAlign: TextAlign.left,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Visibility(
+                            visible: mp['sender']==_key,
+                            child: status(mp['status']),
+                          ),
+                          Expanded(
+                            child: Container(
+                              width: double.infinity,
+                              child: Text(
+                                mp["message"]!=null?mp["message"]:"NULL",
+                                textAlign: TextAlign.left,
+                                maxLines: 1,
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            date,
+                            style: TextStyle(
+                              color: Colors.grey,
+                            ),
+                          )
+                        ],
                       ),
                     ],
                   ),
@@ -402,6 +1547,7 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
               )
             ],
           ),
+          )
         )
     );
   }
@@ -409,7 +1555,7 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    getAllChats2(db);
+    getAllChats(db);
     super.didChangeAppLifecycleState(state);
   }
   @override
@@ -419,14 +1565,25 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
 
       appBar: AppBar(
         title: Text(widget.title),
+        actions: [
+          widget.title!='Requests'?
+          IconButton(
+            icon: Icon(Icons.request_quote),
+            onPressed: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (context) => Chats(title: "Requests",))).whenComplete((){
+                getAllChats(db);
+              });
+            },
+          ):Container()
+        ],
       ),
 
       body: chatContacts(),
 
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          await Navigator.push(context, MaterialPageRoute(builder: (context) => NChats(title: "New Chat",number: _number,db: db,))).then((value){
-            getAllContacts();
+          await Navigator.push(context, MaterialPageRoute(builder: (context) => NChats(title: "New Chat", db: db,))).whenComplete((){
+            getAllChats(db);
           });
         },
         child: Icon(Icons.add),
@@ -442,9 +1599,8 @@ class _ChatState extends State<Chats> with WidgetsBindingObserver{
 }
 
 class NChats extends StatefulWidget{
-  const NChats({super.key,required this.title,required this.number, required this.db});
+  const NChats({super.key,required this.title, required this.db});
   final String title;
-  final String number;
   final Database db;
 
   @override
@@ -488,38 +1644,42 @@ class _NChatState extends State<NChats>{
           onTap: (){
             startChat(mp);
           },
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(30.0),
-                child: dp(mp["dp"]),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(left: 4),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        child: Text(
-                          mp["name"],
-                          textAlign: TextAlign.left,
-                        ),
-                      ),
-                      Container(
-                        width: double.infinity,
-                        child: Text(
-                          mp["number"],
-                          textAlign: TextAlign.left,
-                        ),
-                      ),
-                    ],
-                  ),
+          child: Container(
+            padding: EdgeInsets.all(4),
+            child : Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(30.0),
+                  child: dp(mp["dp"]),
                 ),
-              )
-            ],
+                Expanded(
+                  child: Container(
+                    padding: EdgeInsets.only(left: 4),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: EdgeInsets.only(bottom: 4),
+                          width: double.infinity,
+                          child: Text(
+                            mp["name"],
+                            textAlign: TextAlign.left,
+                          ),
+                        ),
+                        Container(
+                          width: double.infinity,
+                          child: Text(
+                            mp["number"],
+                            textAlign: TextAlign.left,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              ],
+            ),
           ),
         )
     );
@@ -601,10 +1761,13 @@ class _NChatState extends State<NChats>{
   List<Contact> allContacts = [];
   Map<String,String> allC = {};
   late Database db;
+  String key = "";
+  String phoneNumber = "";
 
   void startChat(Map mp){
+    print(mp);
     Navigator.pushReplacement(context,
-        MaterialPageRoute(builder: (context) => ChatPage(map:mp,number: widget.number,db: db,allC: allC,)));
+        MaterialPageRoute(builder: (context) => ChatPage(map:mp,Key: key,db: db)));
   }
   void ssd(String ss){
     showDialog(
@@ -618,40 +1781,68 @@ class _NChatState extends State<NChats>{
   }
 
   filterContacts() async {
-
-    allC.clear();
     Batch b = db.batch();
     b.execute('drop table AllContacts');
     b.execute("""create table AllContacts(
         number VARCHAR(20),
         name TEXT,
-        dp TEXT
+        dp TEXT,
+        ky TEXT
     );
     """);
     allContact.clear();
+    int g = allContact1.length;
     for(int i=0;i<allContact1.length;i++){
       Map<String, String> element = allContact1[i];
-      if(element['number']!=widget.number) {
-        await FirebaseDatabase.instance.ref(
-            "Users/${element["number"]}/personal/dp").get().then((value) {
+      if(element['number']!=phoneNumber) {
+        FirebaseDatabase.instance.ref("Contacts/${element["number"]}").get().then((value) async {
           if (value.exists) {
             print("here it is " + element["number"].toString());
-            element["dp"] = value.value.toString();
+            String h = "";
+            await FirebaseDatabase.instance.ref("Users/${value.value.toString()}/personal/dp").get().then((value){
+              h = value.value.toString();
+            });
+            element["dp"] = h;
+            element["ky"]= value.value.toString();
             allC[element["number"].toString()] = element["name"].toString();
-            downloadDP(element["dp"].toString(), element["number"].toString());
+            // downloadDP(element["dp"].toString(), element["number"].toString());
             b.insert("AllContacts", element);
             setState(() {
               allContact.add(element);
+              g--;
             });
+            if(g==0){
+              await b.commit().whenComplete((){
+                setState(() {
+                  isLoading = false;
+                });
+              });
+            }
+          }
+          else{
+            // print("not user $i");
+            g--;
+            if(g==0){
+              await b.commit().whenComplete((){
+                setState(() {
+                  isLoading = false;
+                });
+              });
+            }
           }
         });
       }
+      else{
+        g--;
+        if(g==0){
+          await b.commit().whenComplete((){
+            setState(() {
+              isLoading = false;
+            });
+          });
+        }
+      }
     }
-    await b.commit().whenComplete((){
-      setState(() {
-        isLoading = false;
-      });
-    });
   }
   downloadDP(String url,String phn) async {
     if(url==""){
@@ -735,9 +1926,21 @@ class _NChatState extends State<NChats>{
       ssd("Permission not granted, please enable permission for contacts");
     }
   }
+  initF() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? ph = prefs.getString('number');
+    final String? ph1= prefs.getString("ky")!;
+    if(ph!=null){
+      phoneNumber = ph;
+    }
+    if(ph1!=null){
+      key = ph1;
+    }
+  }
 
   @override
   void initState() {
+    initF();
     db = widget.db;
     askPermissions();
     super.initState();
@@ -769,11 +1972,10 @@ class _NChatState extends State<NChats>{
 }
 
 class ChatPage extends StatefulWidget{
-  const ChatPage({super.key,required this.map,required this.number, required this.db, required this.allC});
+  const ChatPage({super.key,required this.map, required this.Key, required this.db,});
   final Map map;
-  final String number;
+  final String Key;
   final Database db;
-  final Map<String,String> allC;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -783,10 +1985,11 @@ class _ChatPageState extends State<ChatPage>{
   List<Map> messages = [];
   TextEditingController mesBox = new TextEditingController();
   ScrollController lstview = new ScrollController();
-  String _number = '';
+  String _key = '';
   late Database db;
-  var recievedd;
+  var receivedd;
   var sentt;
+  String url = '';
 
   Map<String,dynamic> mp={};
   Map<String,String> allContacts = {};
@@ -805,31 +2008,31 @@ class _ChatPageState extends State<ChatPage>{
     );
   }
   Widget messageItem(Map message){
-    if(message["sender"]==_number){
+    if(message["sender"]==_key){
       return sentMessage(message);
     }
     else{
-      return recievedMessage(message);
+      return receivedMessage(message);
     }
   }
   Widget status(int i){
     print(i);
     if(i==1){
       return Icon(
-          size: 9,
+          size: 12,
           Icons.done_all_sharp
       );
     }
     if(i==2){
       return Icon(
-        size: 9,
+        size: 12,
         Icons.done_all_rounded,
         color: Colors.red,
       );
     }
     if(i==-1){
       return Icon(
-        size: 9,
+        size: 12,
         Icons.ad_units_sharp,
       );
     }
@@ -838,33 +2041,39 @@ class _ChatPageState extends State<ChatPage>{
         Icons.done
     );
   }
-  Widget recievedMessage(Map mes){
-
+  Widget receivedMessage(Map mes){
     return Container(
       child: Row(
         children: [
           Flexible(
             child: Card(
-              color: Color.fromRGBO(10,170,180,0.3),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Container(
-                    constraints: BoxConstraints(
-                      minWidth: 80,
-                      maxWidth: MediaQuery.of(context).size.width-100,
+              color: Color.fromRGBO(123, 172, 139, 1.0),
+              child: InkWell(
+                onLongPress: (){
+                  String d = '';
+                  d= d+"Received :\n"+mes['date']+" "+mes['time'];
+                  showDialogBox(d);
+                },
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Container(
+                      constraints: BoxConstraints(
+                        minWidth: 80,
+                        maxWidth: MediaQuery.of(context).size.width-100,
+                      ),
+                      padding: EdgeInsets.all(4),
+                      child: Text(mes["message"]),
                     ),
-                    padding: EdgeInsets.all(4),
-                    child: Text(mes["message"]),
-                  ),
-                  // Flexible(
-                  Text(
-                    mes["time"],
-                    style: TextStyle(
-                      fontSize: 8,
+                    // Flexible(
+                    Text(
+                      mes["time"],
+                      style: TextStyle(
+                        fontSize: 10,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -873,49 +2082,57 @@ class _ChatPageState extends State<ChatPage>{
     );
   }
   Widget sentMessage(Map mes){
-
     return Container(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           Flexible(
             child: Card(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Container(
-                    constraints: BoxConstraints(
-                      minWidth: 80,
-                      maxWidth: MediaQuery.of(context).size.width-100,
+              child: InkWell(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Container(
+                      constraints: BoxConstraints(
+                        minWidth: 80,
+                        maxWidth: MediaQuery.of(context).size.width-100,
+                      ),
+                      padding: EdgeInsets.all(4),
+                      child: Text(mes["message"]),
                     ),
-                    padding: EdgeInsets.all(4),
-                    child: Text(mes["message"]),
-                  ),
-                  Container(
-                    child: Wrap(
-                      direction: Axis.horizontal,
-                      alignment: WrapAlignment.end,
-                      children: [
-                        Container(
-                          child: Text(
-                            mes["time"],
-                            style: TextStyle(
-                              fontSize: 10,
+                    Container(
+                      child: Wrap(
+                        direction: Axis.horizontal,
+                        alignment: WrapAlignment.end,
+                        children: [
+                          Container(
+                            child: Text(
+                              mes["time"],
+                              style: TextStyle(
+                                fontSize: 10,
+                              ),
                             ),
+                            padding: EdgeInsets.all(1),
+
                           ),
-                          padding: EdgeInsets.all(1),
+                          Container(
+                            child: status(mes["status"]),
+                            padding: EdgeInsets.all(1),
 
-                        ),
-                        Container(
-                          child: status(mes["status"]),
-                          padding: EdgeInsets.all(1),
-
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+                onLongPress: (){
+                  String d = '';
+                  d= d+"Sent :\n"+mes['date']+" "+mes['time'];
+                  d = d+"\nReceived :\n"+mes['received'];
+                  d = d+"\nSeen :\n"+mes['read'];
+                  showDialogBox(d);
+                },
+              )
             ),
           ),
         ],
@@ -988,6 +2205,43 @@ class _ChatPageState extends State<ChatPage>{
     );
   }
 
+  @override
+  void initState() {
+    _key = widget.Key;
+    db = widget.db;
+    widget.map.forEach((key, value) {
+      mp[key.toString()] = value;
+    });
+    if(!mp.containsKey('ky'))
+      mp['ky'] = widget.map['key'];
+    getdp();
+    getChats();
+    attachFirebaseListener();
+    super.initState();
+  }
+
+  // todo download and save dp here
+  getdp() async {
+    await FirebaseStorage.instance.ref("displayPicture/${mp['ky']}.jpeg").getDownloadURL().then((value){
+      setState(() {
+        url = value;
+      });
+    });
+  }
+  showDialogBox(String d){
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text('Details'),
+          content: Text(d),
+          actions: [
+            TextButton(onPressed: (){Navigator.of(ctx).pop();}, child: Text("OK"))
+          ],
+        );
+      },
+    );
+  }
   void ssd(String ss){
     showDialog(
       context: context,
@@ -998,25 +2252,22 @@ class _ChatPageState extends State<ChatPage>{
       },
     );
   }
-  Future<void> refreshContacts() async {
-    mp["date"] = DateFormat("dd-MM-yyyy").format(DateTime.now());
-    mp["time"] = DateFormat("HH:mm").format(DateTime.now());
-    mp["id"]   = DateTime.now().millisecondsSinceEpoch;
-    // mp["new"]  = 0;
-    await db.delete("contacts",where: "number = ?",whereArgs: [mp["number"].toString()]).then((value) async {
-      await db.insert("contacts", mp);
-    }).onError((error, stackTrace){
-      ssd(error.toString()+" Contt");
-    });
-  }
-  Future<void> getChats() async {
-    await db.query(mp["number"].toString().replaceAll("+", "_"),orderBy: "id DESC").then((value){
+  getChats() async {
+    await db.query("AllChats",where:"ky = ?", whereArgs: [mp["ky"]], orderBy: "id DESC").then((value){
       updateStatusMessages();
+      print(value);
       setState((){
         messages = List.from(value);
       });
     }).catchError((e){
-
+      ssd(e.toString());
+    });
+  }
+  deleteAllChats() async {
+    await db.delete("AllChats",where:"ky = ?", whereArgs: [mp["ky"]], ).then((value){
+      getChats();
+    }).catchError((e){
+      ssd(e.toString());
     });
   }
   void sendMessage(){
@@ -1031,62 +2282,36 @@ class _ChatPageState extends State<ChatPage>{
       "time": _time,
       "id": timestamp,
       "message": mesBox.text,
-      "sender" : _number,
-      "reciever" : mp["number"].toString(),
       "status" : -1,
-      "recieved" : "",
+      "received" : "",
       "read"     : "",
-      "sname"    : ""
+      "uniq"    : timestamp.toString()+_key,
+      "sender" : _key,
+      "receiver" : mp["ky"].toString(),
+      "ky"      : mp["ky"].toString(),
     };
     mesBox.clear();
-
-    await db.insert(mp["number"].toString().replaceAll("+", "_"),mpp).then((value){
+    await db.insert("AllChats",mpp).then((value){
       setState(() {
         messages.insert(0,mpp);
-        refreshContacts();
         sendMessageToServer(mpp);
       });
     }).onError((error, stackTrace) async {
-      await db.execute(
-          """
-        create table """+mp["number"].replaceAll("+", "_")+""" (
-          message TEXT,
-          sender  VARCHAR(20),
-          reciever VARCHAR(20),
-          time    VARCHAR(10),
-          date    VARCHAR(12),
-          id      INTEGER UNIQUE,
-          status  INTEGER,
-          recieved VARCHAR(22),
-          read     VARCHAR(22),
-          sname    VARCHAR(50)
-        );
-        """
-      ).then((value) async {
-        await db.insert(mp["number"].toString().replaceAll("+", "_"),mpp).then((value){
-          setState(() {
-            messages.insert(0,mpp);
-            refreshContacts();
-            sendMessageToServer(mpp);
-          });
-        }).onError((error, stackTrace){
-          ssd(error.toString()+" SendSQL");
-        });
-      });
+      ssd(error.toString());
     });
   }
 
   updateStatusMessages() async {
 
-    await db.query(mp["number"].toString().replaceAll("+", "_"),orderBy: "id DESC",where: "not status = ? AND reciever = ?",
-        whereArgs: [2, _number]).then((value) async {
+    await db.query("AllChats",orderBy: "id DESC",where: "not status = ? AND sender = ?",
+        whereArgs: [2, mp["ky"]]).then((value) async {
       value.forEach((element) {
         DatabaseReference outbox = FirebaseDatabase.instance.ref("Messages/"+element["sender"].toString()+"/Outbox/"+element["id"].toString());
         outbox.update({"status" : 2, "read" : DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now()) });
       });
-      db.update(mp["number"].toString().replaceAll("+", "_"),
+      await db.update("AllChats",
           {"status" : 2, "read" : DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now()) },
-          where: "not status = ? AND reciever = ?",whereArgs: [2, _number]).then((value){
+          where: "not status = ? AND sender = ?",  whereArgs: [2, mp["ky"]]).then((value){
       }).onError((error, stackTrace){
         ssd(error.toString()+" update2");
       });
@@ -1094,98 +2319,63 @@ class _ChatPageState extends State<ChatPage>{
       ssd(error.toString());
     });
   }
-  Future<void> sendMessageToServer(Map<String,dynamic> mpp) async {
+  sendMessageToServer(Map<String,dynamic> mpp) async {
     mpp["time"] = DateFormat("HH:mm").format(DateTime.now());
     mpp["date"] = DateFormat("dd-MM-yyyy").format(DateTime.now());
     mpp["status"] = 0;
 
-    DatabaseReference outbox = FirebaseDatabase.instance.ref("Messages/$_number/Outbox/"+mpp["id"].toString());
-    DatabaseReference inbox  = FirebaseDatabase.instance.ref("Messages/"+mp["number"].toString()+"/Inbox/"+mpp["id"].toString());
+    DatabaseReference outbox = FirebaseDatabase.instance.ref("Messages/$_key/Outbox/"+mpp["id"].toString());
+    DatabaseReference inbox  = FirebaseDatabase.instance.ref("Messages/"+mp["ky"].toString()+"/Inbox/"+mpp["id"].toString());
 
     await outbox.set(mpp).then((value) async {
-      await inbox.set(mpp).then((value) async {
-        await db.update(mp["number"].toString().replaceAll("+", "_"), mpp,where: "id = ?",whereArgs: [mpp["id"]]).then((value){
-          getChats();
-        }).onError((error, stackTrace){
-          ssd(error.toString()+" senttt");
-        });
-      });
     }).onError((error, stackTrace){
       ssd(error.toString());
+    });
+    await inbox.set(mpp).then((value) async {
+
+    });
+    await db.update("AllChats", mpp,where: "uniq = ?",whereArgs: [mpp["uniq"]]).then((value){
+      getChats();
+    }).onError((error, stackTrace){
+      ssd(error.toString()+" senttt");
     });
 
   }
   attachFirebaseListener(){
 
     FirebaseDatabase fdb = FirebaseDatabase.instance;
-    final recieved = fdb.ref("Messages/$_number/Inbox");
-    final sent     = fdb.ref("Messages/$_number/Outbox");
+    final received = fdb.ref("Messages/$_key/Inbox");
+    final sent     = fdb.ref("Messages/$_key/Outbox");
 
-    recievedd = recieved.onChildAdded.listen((event) async {
+    received.onChildAdded.listen((event) async {
       Map<String, dynamic> mss = {};
       event.snapshot.children.forEach((element) {
         mss[element.key!] = element.value.toString();
       });
-      String table = mss["sender"].toString().replaceAll("+", "_")!;
-      Batch sqlBatch = db.batch();
-
-
-      String nm = mss["sname"].toString();
-      if(allContacts.containsKey(mss["sender"].toString())) {
-        nm = allContacts[mss["sender"].toString()]!;
-      }
-      final mp = {
-        "number" : mss["sender"].toString(),
-        "name"   : nm,
-        "time"   : mss["time"].toString(),
-        "date"   : mss["date"].toString(),
-        "id"     : mss["id"]
-      };
-      sqlBatch.execute(
-          """
-              create table IF NOT EXISTS """+table+""" (
-                message TEXT,
-                sender  VARCHAR(20),
-                reciever VARCHAR(20),
-                time    VARCHAR(10),
-                date    VARCHAR(12),
-                id      INTEGER UNIQUE,
-                status  INTEGER,
-                recieved VARCHAR(22),
-                read     VARCHAR(22),
-                sname    VARCHAR(50)
-              );
-              """
-      );
-      sqlBatch.insert(table, mss);
-      sqlBatch.delete("contacts",where: "number = ?",whereArgs: [mss["sender"].toString()]);
-      sqlBatch.insert("contacts", mp);
-
-      await sqlBatch.commit().whenComplete((){
-        // TODO change it according to activity
+      print("helo "+mss.toString());
+      mss["ky"] = mss["sender"];
+      db.insert("AllChats", mss).whenComplete((){
+        //   TODO change according to activity
         getChats();
       });
-
       event.snapshot.ref.remove();
       String _time = DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
-      fdb.ref("Messages/"+mss["sender"]+"/Outbox/"+mss["id"]).update({"recieved":_time, "status":1,}).onError((error, stackTrace){
+      fdb.ref("Messages/"+mss["sender"]+"/Outbox/"+mss["id"]).update({"received":_time, "status":1,}).onError((error, stackTrace){
         ssd(error.toString());
       });
     });
 
-    sentt = sent.onChildChanged.listen((event) async {
+    sent.onChildChanged.listen((event) async {
       Map<String, dynamic> mss = {};
       event.snapshot.children.forEach((element) {
         mss[element.key!] = element.value.toString();
       });
-      String table = mss["reciever"].toString().replaceAll("+", "_")!;
-
-      await db.update(table, mss,where: "id = ? " ,whereArgs: [mss["id"]]).then((value){
+      db.update("AllChats", mss,where: "uniq = ? " ,whereArgs: [mss["uniq"]]).then((value){
         // TODO change according to activity
-        if((mss["status"].toString())=="2"){
+        if((mss["status"])==2){
           event.snapshot.ref.remove();
         }
-        if(mss["reciever"].toString()==mp["number"].toString()){
+        if(mss["receiver"].toString()==mp["ky"].toString()){
           getChats();
         }
       }).onError((error, stackTrace){
@@ -1195,20 +2385,7 @@ class _ChatPageState extends State<ChatPage>{
 
   }
 
-  @override
-  void initState() {
-    _number = widget.number;
-    db = widget.db;
-    widget.map.forEach((key, value) {
-      mp[key.toString()] = value;
-    });
-    widget.allC.forEach((key, value) {
-      allContacts[key.toString()] = value;
-    });
-    getChats();
-    attachFirebaseListener();
-    super.initState();
-  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1222,13 +2399,7 @@ class _ChatPageState extends State<ChatPage>{
               PopupMenuItem(
                 child: Text("delete chat"),
                 onTap: () async {
-                  await db.delete(mp["number"].toString().replaceAll("+", "_")).then((value){
-                    setState(() {
-                      getChats();
-                    });
-                  }).onError((error, stackTrace){
-
-                  });
+                  deleteAllChats();
                 },
               ),
             ],
@@ -1241,14 +2412,12 @@ class _ChatPageState extends State<ChatPage>{
             },
                 icon: Icon(Icons.arrow_back)
             ),
-
-            ClipRRect(
-              borderRadius: BorderRadius.circular(30.0),
-              child: Image.asset(
-                "assets/contact.png",
-                width: 40,
-                height: 40,
-              ),
+            url==''?
+            CircleAvatar(
+              foregroundImage: AssetImage("assets/contact.png"),
+            ):
+            CircleAvatar(
+              foregroundImage: NetworkImage(url),
             )
           ],
         ),
@@ -1260,8 +2429,6 @@ class _ChatPageState extends State<ChatPage>{
   }
   @override
   void dispose() {
-    // sentt.off();
-    // recievedd.off();
     super.dispose();
   }
 }
@@ -1301,7 +2468,11 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
   Future<void> initfunction() async {
     final prefs = await SharedPreferences.getInstance();
     final String? ss = prefs.getString('Details');
+    final String? ph1 = prefs.getString('ky');
     final String? ph = prefs.getString('number');
+    if(ph1!=null){
+      key = ph1;
+    }
     if(ph!=null){
       phoneNumber = ph;
     }
@@ -1367,7 +2538,7 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
   Future<void> nextPage() async {
     try {
       Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (context) => HomePage(title: "Welcome",number: phoneNumber,)));
+          MaterialPageRoute(builder: (context) => HomePage(title: "Welcome",Key: key,)));
     }
     on Exception catch(e){
       ssd(e.toString());
@@ -1473,19 +2644,30 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
   String imageFile = "";
   String verificationID = "";
   String heading = "College";
+  String key = "";
+  bool exist = false;
   var edb = FirebaseFirestore.instance;
   var user = <String, dynamic>{};
   DocumentReference docreff = FirebaseFirestore.instance.collection("Manual").doc("Manual");
   DocumentReference docref  = FirebaseFirestore.instance.collection("Manual").doc("Manual");
-  retriveBasicInfo(){
-    print(phoneNumber);
-    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$phoneNumber/personal");
-    ref.get().then((val){
-      if(val.exists){
-        setState(() {
-          nameInput.text = val.child('Name').value.toString();
-          dateInput.text = val.child('DOB').value.toString();
-          file = val.child('dp').value.toString();
+  retriveBasicInfo() async {
+    await FirebaseFirestore.instance.collection("Users").doc(phoneNumber).get().then((value){
+      if(value.exists){
+        Map<String , dynamic> mp= value.data() as Map<String, dynamic>;
+        print(mp);
+        key = mp["Key"];
+        exist = true;
+        DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$key/personal");
+        ref.get().then((val){
+          if(val.exists){
+            setState(() {
+              nameInput.text = val.child('Name').value.toString();
+              dateInput.text = val.child('DOB').value.toString();
+              file = val.child('dp').value.toString();
+            });
+          }
+        }).onError((error, stackTrace){
+          ssd(error.toString());
         });
       }
     }).onError((error, stackTrace){
@@ -1496,15 +2678,23 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
     user["Name"] = name;
     user["DOB"] = dob;
     user["Phone"] = num;
-
-    if(file.toString().startsWith("http")){
-      saveBasicDetails2(file, num);
-    }
-    else if(file==null||file=="") {
-      saveBasicDetails2("", num);
+    DatabaseReference ref = FirebaseDatabase.instance.ref("Users");
+    if(exist){
+      ref = FirebaseDatabase.instance.ref("Users/$key");
     }
     else{
-      final storage = FirebaseStorage.instance.ref('displayPicture/${phoneNumber}.jpeg');
+      ref = FirebaseDatabase.instance.ref("Users").push();
+      key = ref.key!;
+      print(key);
+    }
+    if(file.toString().startsWith("http")){
+      saveBasicDetails2(file, num,ref);
+    }
+    else if(file==null||file=="") {
+      saveBasicDetails2("", num,ref);
+    }
+    else{
+      final storage = FirebaseStorage.instance.ref('displayPicture/${key}.jpeg');
       final uploadTask = storage.putFile(file);
       uploadTask.snapshotEvents.listen((TaskSnapshot taskSnapshot) async {
         switch (taskSnapshot.state) {
@@ -1523,26 +2713,45 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
           case TaskState.success:
             String url = await storage.getDownloadURL();
             saveDPlocally();
-            saveBasicDetails2(url, num);
+            saveBasicDetails2(url, num,ref);
             break;
         }
       });
     }
   }
-  saveBasicDetails2(String s,String num){
+  saveBasicDetails2(String s,String num,var ref){
     user['dp'] = s;
-    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$phoneNumber/personal");
-    ref.set(user).then((value) async {
+
+    user["Key"] = key;
+    ref.child("personal").set(user).then((value) async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('datasaved', true);
       String str = jsonEncode(user);
       await prefs.setString("personalDetail", str);
-      setState(() {
-        isLoading = false;
-        index = 4;
-        showListItems(heading);
-        user.clear();
-      });
+      await prefs.setString("ky", key);
+
+      if(!exist){
+        await FirebaseFirestore.instance.collection("Users").doc(phoneNumber).set(user).then((value){
+          setState(() {
+            isLoading = false;
+            index = 4;
+            showListItems(heading);
+            user.clear();
+          });
+        }).onError((error, stackTrace){
+          ssd(error.toString());
+        });
+      }
+      else{
+        setState(() {
+          isLoading = false;
+          index = 4;
+          showListItems(heading);
+          user.clear();
+        });
+      }
+
+      FirebaseDatabase.instance.ref("Contacts/$phoneNumber").set(key);
     }, onError: (e) {
       setState(() {
         isLoading = false;
@@ -1552,7 +2761,7 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
     );
   }
   saveEducationalDetails(){
-    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$phoneNumber/professional");
+    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$key/professional");
     ref.set(user)
         .then((value) async {
           final prefs = await SharedPreferences.getInstance();
@@ -1597,7 +2806,6 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
         await prefs.setBool('loggedin', true);
         setState(() {
           isLoading = false;
-          index = 3;
         });
       }
       else{
@@ -1736,7 +2944,7 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
           Container(
               margin:  EdgeInsets.all(6),
               alignment: Alignment.topLeft,
-              child: Text("Enter the verification code recieved on your phone number")
+              child: Text("Enter the verification code received on your phone number")
           ),
 
 
@@ -1977,14 +3185,15 @@ class _RegistrationState extends State<RegistrationPage> with WidgetsBindingObse
   }
   Widget selectPage(){
     if(index==1) return page1();
-    if(index==2) return page2();
-    if(index==3) return page3();
+    else if(index==2) return page2();
+    else if(index==3) return page3();
     else return page4();
   }
 
   @override
   initState(){
     index = widget.i;
+    print(index);
     CheckisLoggedin();
     initfunction();
     super.initState();

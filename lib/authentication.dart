@@ -12,6 +12,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:intl/intl.dart';
@@ -29,36 +30,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'main.dart';
 
 
-class Account extends StatefulWidget{
-  const Account({super.key, required this.title});
 
-  final String title;
-  @override
-  State<Account> createState() => _AccountState();
-}
-class _AccountState extends State<Account>{
 
-  @override
-  void initState() {
-    super.initState();
-
-  }
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
-
-      body: Container(
-        child: Text("Helo god"),
-      ),
-
-    );
-  }
-
-}
 
 class Confessions extends StatefulWidget{
   const Confessions({super.key, required this.title});
@@ -91,54 +64,23 @@ class _ConfessionState extends State<Confessions>{
 
 }
 
-class Search extends StatefulWidget{
-  const Search({super.key, required this.title});
-
-  final String title;
-  @override
-  State<Search> createState() => _SearchState();
-}
-class _SearchState extends State<Search>{
-
-  @override
-  void initState() {
-    super.initState();
-
-  }
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
-
-      body: Container(
-        child: Text("Helo god"),
-      ),
-
-    );
-  }
-
-}
-
 
 
 class HomePage extends StatefulWidget{
-  const HomePage({super.key, required this.title,required this.number});
+  const HomePage({super.key, required this.title,required this.Key});
   final String title;
-  final String number;
+  final String Key;
   @override
   State<HomePage> createState() => _HomePageState();
 }
 class _HomePageState extends State<HomePage> {
 
   int _currentIndex = 0;
-  String _number = "";
+  String _key = "";
 
   Widget homPage(){
     if(_currentIndex==1){
-      return Chats(title: "Messages",number: _number,);
+      return Chats(title: "Messages");
     }else if(_currentIndex==0){
       return const Notices(title: "Notices");
     }else if(_currentIndex==2){
@@ -147,36 +89,9 @@ class _HomePageState extends State<HomePage> {
       return const Account(title: "My Account",);
     }
   }
-  // Widget icon(){
-  //   if(_currentIndex==0){
-  //     return Icon(Icons.add);
-  //   }else if(_currentIndex==1){
-  //     return Icon(Icons.add);
-  //   }else if(_currentIndex==2){
-  //     return Icon(Icons.add);
-  //   }else if(_currentIndex==3){
-  //     return Icon(Icons.search);
-  //   }else{
-  //     return Icon(Icons.edit);
-  //   }
-  // }
-
-  // floatingaction(){
-  //   if(_currentIndex==0){
-  //     Navigator.push(context, MaterialPageRoute(builder: (context) => NChats(title: "New Chat",number: _number,)));
-  //   }else if(_currentIndex==1){
-  //
-  //   }else if(_currentIndex==2){
-  //
-  //   }else if(_currentIndex==3){
-  //
-  //   }else{
-  //
-  //   }
-  // }
   @override
   void initState() {
-    _number = widget.number;
+    _key = widget.Key;
     super.initState();
   }
   @override
@@ -236,7 +151,6 @@ class _HomePageState extends State<HomePage> {
 
 
 
-
 class Notices extends StatefulWidget{
   const Notices({super.key, required this.title});
 
@@ -254,6 +168,17 @@ class _NoticesState extends State<Notices>{
   initF() async {
     final prefs = await SharedPreferences.getInstance();
     final String? ph = prefs.getString('number');
+    final String? isPro = prefs.getString('professionalDetail');
+    key = prefs.getString("ky")!;
+    if(isPro==null){
+      isProf = false;
+      return;
+    }
+    else{
+      setState((){
+        isProf = true;
+      });
+    }
     if(ph!=null){
       phoneNumber = ph;
     }
@@ -270,14 +195,18 @@ class _NoticesState extends State<Notices>{
           onCreate: (Database db,int version) async {
             Batch b = db.batch();
             b.execute(
-                """ create table contacts(
-                    number VARCHAR(20),
-                    name TEXT,
+                """ create table AllChats(
                     id INTEGER,
                     time VARCHAR(10),
                     date VARCHAR(12),
-                    dp TEXT,
-                    new INTEGER
+                    message TEXT,            
+                    sender TEXT,
+                    receiver TEXT,                    
+                    status INTEGER,
+                    received VARCHAR(22),
+                    read     VARCHAR(22),                    
+                    ky TEXT,
+                    uniq TEXT UNIQUE
                   );
               """
             );
@@ -285,7 +214,9 @@ class _NoticesState extends State<Notices>{
                 """
             create table AllContacts(
                     number VARCHAR(20),
-                    name TEXT
+                    name TEXT,
+                    dp TEXT,
+                    ky TEXT
                   );
             """
             );
@@ -318,7 +249,7 @@ class _NoticesState extends State<Notices>{
     });
   }
   FirstTime() async {
-    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$phoneNumber/latest");
+    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$key/latest");
     await ref.get().then((value) async {
       if(value.exists){
         latest = value.value as int;
@@ -356,10 +287,12 @@ class _NoticesState extends State<Notices>{
   }
 
   String phoneNumber = "";
+  String key = "";
   late Database db;
   bool isloading = false;
   int latest = 0;
   List<Map<String, dynamic>> _list = [];
+  bool isProf = false;
 
   void ssd(String ss){
     showDialog(
@@ -388,16 +321,9 @@ class _NoticesState extends State<Notices>{
     fs.Query q = ref.where("s",isEqualTo: 1);
     bool b = true;
     Map<String, dynamic> info = new Map();
-    FirebaseDatabase.instance.ref("Users/$phoneNumber/professional").get().then((value){
+    FirebaseDatabase.instance.ref("Users/$key/professional").get().then((value){
       value.children.forEach((e) {
         info[e.key.toString()] = e.value;
-        // if(b){
-        //   b = false;
-        //   q = ref.where(e.key!,arrayContains: e.value);
-        // }
-        // else{
-        //   q = q.where(e.key!,arrayContains: e.value);
-        // }
       });
       q = ref.where("College",arrayContains: info["College"]);
 
@@ -441,7 +367,7 @@ class _NoticesState extends State<Notices>{
       }
       final prefs = await SharedPreferences.getInstance();
       prefs.setInt("latest", latest);
-      DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$phoneNumber/latest");
+      DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$key/latest");
       ref.set(latest);
       await b.commit().then((value){
         getAllNotices(db);
@@ -454,6 +380,19 @@ class _NoticesState extends State<Notices>{
   }
 
   Widget lists(){
+    if(!isProf){
+      return Container(
+        alignment: Alignment.center,
+        child: Text("You donot have a professional account. Please add your professional details to receive notices",
+        maxLines: 3,),
+      );
+    }
+    if(_list.length==0){
+      return Container(
+        alignment: Alignment.center,
+        child: Text("No new Notice"),
+      );
+    }
     return ListView.builder(
       itemCount: _list.length,
       itemBuilder: (BuildContext b, int i){
@@ -585,10 +524,14 @@ class _NoticesState extends State<Notices>{
               Icons.favorite_border,
             ),
             onPressed: () async {
-              await Navigator.push(context, MaterialPageRoute(builder: (context) =>
-                  Notices1(title: "Favorites",db: db, name: "_favorites",))).then((value){
-
-              });
+              if(isProf) {
+                await Navigator.push(
+                    context, MaterialPageRoute(builder: (context) =>
+                    Notices1(title: "Favorites", db: db, name: "_favorites",)))
+                    .then((value) {
+                      getAllNotices(db);
+                });
+              }
             },
           )
         ],
@@ -620,9 +563,13 @@ class _NoticesState extends State<Notices>{
           Icons.add,
         ),
         onPressed: () async {
-          await Navigator.push(context, MaterialPageRoute(builder: (context) => NewNotice(title: "Publish a notice"))).then((value){
-            getAllNotices(db);
-          });
+          if(isProf) {
+            await Navigator.push(context, MaterialPageRoute(
+                builder: (context) => NewNotice(title: "Publish a notice")))
+                .then((value) {
+              getAllNotices(db);
+            });
+          }
         },
       ),
 
@@ -651,6 +598,7 @@ class _NoticesState1 extends State<Notices1>{
     db = widget.db;
     final prefs = await SharedPreferences.getInstance();
     final String? ph = prefs.getString('number');
+    key = prefs.getString("ky")!;
     if(ph!=null){
       phoneNumber = ph;
     }
@@ -662,6 +610,7 @@ class _NoticesState1 extends State<Notices1>{
     attachFirebase();
   }
 
+  String key = "";
   String phoneNumber = "";
   late Database db;
   bool isloading = false;
@@ -706,7 +655,7 @@ class _NoticesState1 extends State<Notices1>{
     fs.Query q = ref.where("s",isEqualTo: 1);
     bool b = true;
     Map<String, dynamic> info = new Map();
-    FirebaseDatabase.instance.ref("Users/$phoneNumber/professional").get().then((value){
+    FirebaseDatabase.instance.ref("Users/$key/professional").get().then((value){
       value.children.forEach((e) {
         info[e.key.toString()] = e.value;
         // if(b){
@@ -756,6 +705,8 @@ class _NoticesState1 extends State<Notices1>{
       }
       final prefs = await SharedPreferences.getInstance();
       prefs.setInt("latest", latest);
+      DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$key/latest");
+      ref.set(latest);
       await b.commit().then((value){
         getAllNotices(db);
       }).onError((error, stackTrace){
@@ -930,9 +881,9 @@ class _NoticesState2 extends State<Notices2>{
     id = widget.id;
     db = widget.db;
     final prefs = await SharedPreferences.getInstance();
-    final String? ph = prefs.getString('number');
+    final String? ph = prefs.getString('ky');
     if(ph!=null){
-      phoneNumber = ph;
+      key = ph;
     }
     final int? k = prefs.getInt("latest");
     if(k!=null){
@@ -942,7 +893,7 @@ class _NoticesState2 extends State<Notices2>{
     // attachFirebase();
   }
 
-  String phoneNumber = "";
+  String key = "";
   late Database db;
   bool isloading = false;
   int latest = 0;
@@ -991,7 +942,7 @@ class _NoticesState2 extends State<Notices2>{
     });
   }
   updateFav(int i) async {
-    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$phoneNumber/favourites");
+    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$key/favourites");
     await ref.get().then((v) async {
       List<dynamic> l = [];
       if(v.exists){
@@ -1094,9 +1045,9 @@ class _NewNoticeState extends State<NewNotice>{
   }
   initF() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? ph = prefs.getString('number');
+    final String? ph = prefs.getString('ky');
     if(ph!=null){
-      phoneNumber = ph;
+      key = ph;
       getGroups();
     }
   }
@@ -1129,7 +1080,7 @@ class _NewNoticeState extends State<NewNotice>{
       </html>
     ''');
   }
-  String phoneNumber = "";
+  String key = "";
   bool isloading = false;
 
   void ssd(String ss){
@@ -1170,7 +1121,7 @@ class _NewNoticeState extends State<NewNotice>{
   getGroups() async {
     groups.clear();
     groups.add("SELECT");
-    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$phoneNumber/Groups");
+    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$key/Groups");
     await ref.get().then((DataSnapshot v){
       v.children.forEach((element) {
         groups.add(element.key!);
@@ -1185,7 +1136,7 @@ class _NewNoticeState extends State<NewNotice>{
       isloading = true;
     });
     Map<String, dynamic> mp = new Map();
-    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$phoneNumber/Groups/$groupValue");
+    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$key/Groups/$groupValue");
     FirebaseFirestore rr  = FirebaseFirestore.instance;
     await ref.get().then((DataSnapshot v){
       print(v.child('name').value);
@@ -1429,9 +1380,9 @@ class _ManageGroupState extends State<ManageGroups>{
   }
   initF() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? ph = prefs.getString('number');
+    final String? ph = prefs.getString('ky');
     if(ph!=null){
-      phoneNumber = ph;
+      key = ph;
       getItems();
     }
   }
@@ -1449,11 +1400,11 @@ class _ManageGroupState extends State<ManageGroups>{
 
   bool isloading = true;
   List<Map<String, dynamic>> _list = [];
-  String phoneNumber = "";
+  String key = "";
 
   getItems() async {
     _list.clear();
-    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$phoneNumber/Groups");
+    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$key/Groups");
     await ref.get().then((DataSnapshot v){
       v.children.forEach((element) {
         Map<String, dynamic> m = new Map();
@@ -1470,7 +1421,7 @@ class _ManageGroupState extends State<ManageGroups>{
     });
   }
   deleteI(int i) async {
-    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$phoneNumber/Groups/${_list[i]['name'].toString()}");
+    DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$key/Groups/${_list[i]['name'].toString()}");
     await ref.remove().then((value){
       setState(() {
         _list.removeAt(i);
@@ -1612,10 +1563,10 @@ class _AudienceState extends State<Audience>{
   }
   initF() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? ph = prefs.getString('number');
+    final String? ph = prefs.getString('ky');
     final String? mm = prefs.getString('personalDetail');
     if(ph!=null){
-      phoneNumber = ph;
+      key = ph;
     }
     if(mm!=null){
       mp = jsonDecode(mm);
@@ -1633,7 +1584,7 @@ class _AudienceState extends State<Audience>{
     );
   }
 
-  String phoneNumber = "";
+  String key = "";
   Map<String, dynamic> mp = new Map();
   TextEditingController name = new TextEditingController();
   List<String> fields = ["SELECT"];
@@ -1682,11 +1633,12 @@ class _AudienceState extends State<Audience>{
       });
       prop['name'] = nn;
       prop['admin']= mp['Name'];
-      DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$phoneNumber/Groups/$nn");
+      prop['ky']= key;
+      DatabaseReference ref = FirebaseDatabase.instance.ref("Users/$key/Groups/$nn");
       await ref.set(prop).then((value){
-        // ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        //   content: Text("Group Saved"),
-        // ));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("Group Saved"),
+        ));
         Navigator.pop(context);
       }).onError((error, stackTrace){
         setState(() {
